@@ -104,7 +104,7 @@ export function FillPatternHacks() {
   const [viewState, setViewState] = useState<MapViewState>(persisted.viewState ?? INITIAL_VIEW_STATE);
 
   const [controls, setControls] = useControls(() => ({
-    renderer: { value: init('renderer', 'deckgl'), options: { DeckGL: 'deckgl', MapboxOverlay: 'overlay' } },
+    renderer: { value: init('renderer', 'overlay'), options: { DeckGL: 'deckgl', MapboxOverlay: 'overlay' } },
     basemap: {
       value: init('basemap', 'positron'),
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
