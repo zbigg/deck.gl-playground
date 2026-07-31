@@ -106,13 +106,35 @@ export function FillPatternHacks() {
     sizing: { value: init('sizing', 'world'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
-    screenPx: { value: init('screenPx', 24), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
+    screenPx: {
+      value: init('screenPx', 24),
+      min: 4,
+      max: 200,
+      step: 1,
+      render: (get) => get('sizing') === 'screen' && get('assetSource') !== 'png'
+    },
+    // png displays at its native 64px in follow-zoom (locked).
+    screenPxPng: {
+      value: 64,
+      disabled: true,
+      label: 'screenPx',
+      render: (get) => get('sizing') === 'screen' && get('assetSource') === 'png'
+    },
     lodMaxClamp: { value: init('lodMaxClamp', 0), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
     mipLevels: { value: init('mipLevels', 4), min: 1, max: 6, step: 1, label: 'margin mip levels' },
     renderResolution: {
       value: init('renderResolution', 64),
       options: { '64px (1×)': 64, '128px (2×)': 128, '256px (4×)': 256 },
-      label: 'render res (texels)'
+      label: 'render res (texels)',
+      render: (get) => get('assetSource') !== 'png'
+    },
+    // png is a fixed 64px export — higher texel res would only upscale, so lock it.
+    renderResolutionPng: {
+      value: 64,
+      options: { '64px (1×)': 64 },
+      label: 'render res (texels)',
+      disabled: true,
+      render: (get) => get('assetSource') === 'png'
     },
     assetSource: {
       value: init('assetSource', 'png'),
@@ -141,6 +163,11 @@ export function FillPatternHacks() {
     showAtlas
   } = controls;
 
+  // png is a fixed 64px export: force both its render resolution and follow-zoom size to 64
+  // (the editable knobs are hidden and shown disabled at 64 for png).
+  const effectiveResolution = assetSource === 'png' ? 64 : renderResolution;
+  const effectiveScreenPx = assetSource === 'png' ? 64 : screenPx;
+
   useEffect(() => {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({ controls, viewState: sanitizeViewState(viewState) }));
@@ -152,8 +179,8 @@ export function FillPatternHacks() {
   // Rebuild the atlas only when the atlas-shaping controls change.
   const [build, setBuild] = useState<AtlasBuild | null>(null);
   useEffect(() => {
-    setBuild(buildAtlas({ resolution: renderResolution, mipLevels, assetSource: assetSource as PatternAssetSource }));
-  }, [renderResolution, mipLevels, assetSource]);
+    setBuild(buildAtlas({ resolution: effectiveResolution, mipLevels, assetSource: assetSource as PatternAssetSource }));
+  }, [effectiveResolution, mipLevels, assetSource]);
 
   // Resolve the assembled atlas image for the preview (deck consumes the same promise separately).
   const [atlasImage, setAtlasImage] = useState<CanvasImageSource | null>(null);
@@ -169,19 +196,19 @@ export function FillPatternHacks() {
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
   const zoom = Math.round(viewState.zoom ?? INITIAL_VIEW_STATE.zoom!);
-  const resolution = build?.cell ?? renderResolution; // atlas texels per tile
+  const resolution = build?.cell ?? effectiveResolution; // atlas texels per tile
   // On-screen size is anchored to the 64px design unit and is independent of render resolution:
   // the (SOURCE_TILE_SIZE / resolution) factor cancels the shader's ×frame.width (= resolution),
   // so bumping resolution only sharpens. World = fixed geographic; follow-zoom = ~screenPx CSS.
   const onScreenBase =
-    sizing === 'world' ? 1 : screenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, zoom));
+    sizing === 'world' ? 1 : effectiveScreenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, zoom));
   const patternScale = (patternSize / 100) * onScreenBase * (SOURCE_TILE_SIZE / resolution);
 
   const layers = build
     ? [
         new GeoJsonLayer({
           // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
-          id: `countries-${renderResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
+          id: `countries-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
           data: COUNTRIES,
           stroked: true,
           filled: true,
