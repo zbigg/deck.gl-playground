@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import type { MapViewState } from '@deck.gl/core';
@@ -7,6 +7,7 @@ import { Map } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildAtlas, FILL_UV_SCALE, PATTERN_KEYS, type AtlasBuild, type PatternAssetSource } from './pattern-atlas';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
+import { Loupe } from './Loupe';
 
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
@@ -32,6 +33,9 @@ function loadPersisted(): Persisted {
 }
 
 export function FillPatternHacks() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mouseRef = useRef<{ x: number; y: number } | null>(null);
+
   const persisted = useMemo(loadPersisted, []);
   const saved = persisted.controls ?? {};
   const init = <T,>(key: string, fallback: T): T => (key in saved ? (saved[key] as T) : fallback);
@@ -112,14 +116,21 @@ export function FillPatternHacks() {
     : [];
 
   return (
-    <>
+    <div
+      ref={containerRef}
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }}
+      style={{ position: 'absolute', inset: 0 }}
+    >
       <DeckGL
         viewState={viewState}
         onViewStateChange={({ viewState: vs }) => setViewState(vs as MapViewState)}
         controller={true}
         layers={layers}
       >
-        <Map mapStyle={CARTO_STYLES[basemap]} />
+        <Map mapStyle={CARTO_STYLES[basemap]} preserveDrawingBuffer />
       </DeckGL>
       <div
         style={{
@@ -138,6 +149,7 @@ export function FillPatternHacks() {
         {seamFix ? ' · seam-fix' : ''}
         {fp64 ? ' · fp64' : ''}
       </div>
-    </>
+      <Loupe containerRef={containerRef} mouseRef={mouseRef} />
+    </div>
   );
 }
