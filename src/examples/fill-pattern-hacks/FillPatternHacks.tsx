@@ -33,7 +33,9 @@ const CARTO_STYLE_FIRST_LABEL_LAYER: Record<string, string> = {
   voyager: 'watername_ocean'
 };
 
-const INITIAL_VIEW_STATE: MapViewState = { longitude: -3.7, latitude: 40.4, zoom: 4 };
+// pitch/bearing must be present: MapboxOverlay drives maplibre as a controlled map, and undefined
+// camera props wedge it on first load (before any viewState has been persisted).
+const INITIAL_VIEW_STATE: MapViewState = { longitude: -3.7, latitude: 40.4, zoom: 4, pitch: 0, bearing: 0 };
 
 // Dark categorical palette — the pattern is a mask tinted by fillColor, and the default
 // basemap is light, so keep the tints dark and saturated for contrast.
@@ -117,7 +119,7 @@ export function FillPatternHacks() {
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
     },
     pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
-    sizing: { value: init('sizing', 'world'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
+    sizing: { value: init('sizing', 'screen'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
     screenPx: {
@@ -165,7 +167,7 @@ export function FillPatternHacks() {
     pattern,
     sizing,
     patternSize,
-    screenPx,
+    screenPx = 64,
     lodMaxClamp,
     mipLevels,
     renderResolution,
@@ -263,39 +265,39 @@ export function FillPatternHacks() {
         style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: showInfo ? PANEL_WIDTH : 0 }}
       >
         <Renderer
-        viewState={viewState}
-        onViewStateChange={setViewState}
-        layers={layers as Layer[]}
-        mapStyle={CARTO_STYLES[basemap]}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left: 12,
-          bottom: 12,
-          padding: '4px 8px',
-          borderRadius: 4,
-          font: '12px ui-monospace, monospace',
-          color: '#cbd5e1',
-          background: 'rgba(0,0,0,0.5)'
-        }}
-      >
-        zoom {zoom.toFixed(2)} → {discreteZoom} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
-        {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
-        {seamFix ? ' · seam-fix' : ''}
-        {fp64 ? ' · fp64' : ''}
-      </div>
-      {showAtlas && (
-        <AtlasPreview image={atlasImage} onClose={() => setControls({ showAtlas: false })} style={{ right: 230, bottom: 12 }} />
-      )}
-      {showLoupe && (
-        <Loupe
-          containerRef={containerRef}
-          mouseRef={mouseRef}
-          onClose={() => setControls({ showLoupe: false })}
-          style={{ right: 12, bottom: 12 }}
+          viewState={viewState}
+          onViewStateChange={setViewState}
+          layers={layers as Layer[]}
+          mapStyle={CARTO_STYLES[basemap]}
         />
-      )}
+        <div
+          style={{
+            position: 'absolute',
+            left: 12,
+            bottom: 12,
+            padding: '4px 8px',
+            borderRadius: 4,
+            font: '12px ui-monospace, monospace',
+            color: '#cbd5e1',
+            background: 'rgba(0,0,0,0.5)'
+          }}
+        >
+          zoom {zoom.toFixed(2)} → {discreteZoom} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
+          {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
+          {seamFix ? ' · seam-fix' : ''}
+          {fp64 ? ' · fp64' : ''}
+        </div>
+        {showAtlas && (
+          <AtlasPreview image={atlasImage} onClose={() => setControls({ showAtlas: false })} style={{ right: 230, bottom: 12 }} />
+        )}
+        {showLoupe && (
+          <Loupe
+            containerRef={containerRef}
+            mouseRef={mouseRef}
+            onClose={() => setControls({ showLoupe: false })}
+            style={{ right: 12, bottom: 12 }}
+          />
+        )}
       </div>
       {showInfo && (
         <div
