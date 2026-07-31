@@ -6,8 +6,7 @@
 // deck's meters -> common-space constant (mirrors FILL_UV_SCALE in the fill shader).
 export const FILL_UV_SCALE = 512 / 40_000_000;
 
-const SOURCE_TILE_SIZE = 64; // px of the original raster masks
-const VECTOR_RENDER_SIZE = 128; // svg/procedural rasterize each repeat at up to this
+const SOURCE_TILE_SIZE = 64; // native period of every tile — png raster is 64×64, svg viewBox is 0 0 64 64
 
 export type PatternAssetSource = 'png' | 'svg' | 'procedural';
 
@@ -39,12 +38,11 @@ const CELL_SVG: Record<string, string> = {};
 for (const [p, url] of Object.entries(pngUrls)) CELL_PNG[asKey(p)] = url as string;
 for (const [p, url] of Object.entries(svgUrls)) CELL_SVG[asKey(p)] = url as string;
 
-const repeatsFor = (cell: number, source: PatternAssetSource) =>
-  Math.max(1, Math.floor(cell / (source === 'png' ? SOURCE_TILE_SIZE : VECTOR_RENDER_SIZE)));
+// Every source shares the same 64px native period, so density is source-independent.
+const repeatsFor = (cell: number) => Math.max(1, Math.floor(cell / SOURCE_TILE_SIZE));
 
-// Keeps the on-screen pattern size constant across cell sizes / sources.
-export const scaleAdjustment = (cell: number, source: PatternAssetSource) =>
-  (SOURCE_TILE_SIZE * repeatsFor(cell, source)) / cell;
+// Keeps the on-screen pattern size constant across cell sizes.
+export const scaleAdjustment = (cell: number) => (SOURCE_TILE_SIZE * repeatsFor(cell)) / cell;
 
 // Margin (bleeding buffer) sized as 2^levels texels so `levels` mip levels stay bleed-free,
 // capped at cell/4. Filled with the cell's own wrapped pattern by composeAtlas.
@@ -102,12 +100,12 @@ function paintTile(ctx: Ctx, key: string): void {
   const [, name, density] = key.match(/^(.*?)(?:-(small|medium|large))?$/) ?? [];
   const step = DENSITY_STEP[density ?? ''] ?? 1;
   const linePeriod = 4 * step;
-  const diagPeriod = 16 * step;
+  const diagPeriod = (16 * step) / 3; // 45° lines: 12/6/3 periods across the 64px tile (divides 64 → seamless)
   const square = 2 * step;
   ctx.fillStyle = '#000';
   ctx.strokeStyle = '#000';
   const diag = (dir: 1 | -1) => {
-    ctx.lineWidth = Math.SQRT2;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     for (let k = -Math.ceil(64 / diagPeriod); k <= 2 * Math.ceil(64 / diagPeriod); k++) {
       ctx.moveTo(k * diagPeriod - 8 * dir, -8);
@@ -203,7 +201,7 @@ export function buildAtlas(opts: {
   assetSource: PatternAssetSource;
 }): AtlasBuild {
   const { cellSize: cell, mipLevels, assetSource } = opts;
-  const reps = repeatsFor(cell, assetSource);
+  const reps = repeatsFor(cell);
   const step = cell / reps;
 
   const atlas = (async () => {
@@ -218,5 +216,5 @@ export function buildAtlas(opts: {
     return composeAtlas(cell, mipLevels, reps, images);
   })();
 
-  return { atlas, mapping: getAtlasMapping(cell, mipLevels), scaleAdjustment: scaleAdjustment(cell, assetSource), cell };
+  return { atlas, mapping: getAtlasMapping(cell, mipLevels), scaleAdjustment: scaleAdjustment(cell), cell };
 }
