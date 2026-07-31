@@ -39,8 +39,8 @@ export function FillPatternHacks() {
     basemap: { value: 'positron', options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' } },
     pattern: { value: 'diag-right-medium', options: PATTERN_KEYS as unknown as string[] },
     sizing: { value: 'world', options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
-    // Builder's fillPatternSize: a base-scale multiplier (0.1–500) on the auto-computed scale.
-    patternSize: { value: 1, min: 0.1, max: 500, step: 0.1, label: 'pattern size (×)' },
+    // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
+    patternSize: { value: 100, min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
     screenPx: { value: 24, min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
     lodMaxClamp: { value: 0, min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
     mipLevels: { value: 4, min: 1, max: 6, step: 1, label: 'margin mip levels' },
@@ -65,7 +65,7 @@ export function FillPatternHacks() {
   // `patternSize` multiplies it — the same base × fillPatternSize Builder applies.
   const baseScale =
     sizing === 'world' ? (build?.scaleAdjustment ?? 1) : screenPx / (FILL_UV_SCALE * cell * Math.pow(2, zoom));
-  const patternScale = patternSize * baseScale;
+  const patternScale = (patternSize / 100) * baseScale;
 
   const layers = build
     ? [
