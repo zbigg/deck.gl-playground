@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import type { Layer, MapViewState } from '@deck.gl/core';
 import { useControls } from 'leva';
-import { buildAtlas, FILL_UV_SCALE, PATTERN_KEYS, type AtlasBuild, type PatternAssetSource } from './pattern-atlas';
+import {
+  buildAtlas,
+  FILL_UV_SCALE,
+  PATTERN_KEYS,
+  SOURCE_TILE_SIZE,
+  type AtlasBuild,
+  type PatternAssetSource
+} from './pattern-atlas';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
 import { Loupe } from './Loupe';
 import { AtlasPreview } from './AtlasPreview';
@@ -102,7 +109,11 @@ export function FillPatternHacks() {
     screenPx: { value: init('screenPx', 24), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
     lodMaxClamp: { value: init('lodMaxClamp', 0), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
     mipLevels: { value: init('mipLevels', 4), min: 1, max: 6, step: 1, label: 'margin mip levels' },
-    cellSize: { value: init('cellSize', 128), options: { '128px': 128, '256px': 256 } },
+    renderResolution: {
+      value: init('renderResolution', 64),
+      options: { '64px (1×)': 64, '128px (2×)': 128, '256px (4×)': 256 },
+      label: 'render res (texels)'
+    },
     assetSource: {
       value: init('assetSource', 'png'),
       options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' }
@@ -121,7 +132,7 @@ export function FillPatternHacks() {
     screenPx,
     lodMaxClamp,
     mipLevels,
-    cellSize,
+    renderResolution,
     assetSource,
     seamFix,
     fp64,
@@ -141,8 +152,8 @@ export function FillPatternHacks() {
   // Rebuild the atlas only when the atlas-shaping controls change.
   const [build, setBuild] = useState<AtlasBuild | null>(null);
   useEffect(() => {
-    setBuild(buildAtlas({ cellSize, mipLevels, assetSource: assetSource as PatternAssetSource }));
-  }, [cellSize, mipLevels, assetSource]);
+    setBuild(buildAtlas({ resolution: renderResolution, mipLevels, assetSource: assetSource as PatternAssetSource }));
+  }, [renderResolution, mipLevels, assetSource]);
 
   // Resolve the assembled atlas image for the preview (deck consumes the same promise separately).
   const [atlasImage, setAtlasImage] = useState<CanvasImageSource | null>(null);
@@ -158,19 +169,19 @@ export function FillPatternHacks() {
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
   const zoom = Math.round(viewState.zoom ?? INITIAL_VIEW_STATE.zoom!);
-  const cell = build?.cell ?? cellSize;
-  // Base scale: world-anchored uses the atlas' scaleAdjustment (fixed geographic size, like
-  // Builder); follow-zoom solves for a ~screenPx repeat at the current zoom. The user's
-  // `patternSize` multiplies it — the same base × fillPatternSize Builder applies.
-  const baseScale =
-    sizing === 'world' ? (build?.scaleAdjustment ?? 1) : screenPx / (FILL_UV_SCALE * cell * Math.pow(2, zoom));
-  const patternScale = (patternSize / 100) * baseScale;
+  const resolution = build?.cell ?? renderResolution; // atlas texels per tile
+  // On-screen size is anchored to the 64px design unit and is independent of render resolution:
+  // the (SOURCE_TILE_SIZE / resolution) factor cancels the shader's ×frame.width (= resolution),
+  // so bumping resolution only sharpens. World = fixed geographic; follow-zoom = ~screenPx CSS.
+  const onScreenBase =
+    sizing === 'world' ? 1 : screenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, zoom));
+  const patternScale = (patternSize / 100) * onScreenBase * (SOURCE_TILE_SIZE / resolution);
 
   const layers = build
     ? [
         new GeoJsonLayer({
           // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
-          id: `countries-${cellSize}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
+          id: `countries-${renderResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
           data: COUNTRIES,
           stroked: true,
           filled: true,

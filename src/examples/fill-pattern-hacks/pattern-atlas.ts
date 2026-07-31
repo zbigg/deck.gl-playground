@@ -6,7 +6,9 @@
 // deck's meters -> common-space constant (mirrors FILL_UV_SCALE in the fill shader).
 export const FILL_UV_SCALE = 512 / 40_000_000;
 
-const SOURCE_TILE_SIZE = 64; // native period of every tile — png raster is 64×64, svg viewBox is 0 0 64 64
+// Native design size (px) of every pattern tile — png raster is 64×64, svg viewBox is 0 0 64 64.
+// It anchors on-screen size; the atlas render resolution (texels/tile) is independent of it.
+export const SOURCE_TILE_SIZE = 64;
 
 export type PatternAssetSource = 'png' | 'svg' | 'svg-figma' | 'procedural';
 
@@ -41,12 +43,6 @@ const CELL_SVG_FIGMA: Record<string, string> = {};
 for (const [p, url] of Object.entries(pngUrls)) CELL_PNG[asKey(p)] = url as string;
 for (const [p, url] of Object.entries(svgUrls)) CELL_SVG[asKey(p)] = url as string;
 for (const [p, url] of Object.entries(svgFigmaUrls)) CELL_SVG_FIGMA[asKey(p)] = url as string;
-
-// Every source shares the same 64px native period, so density is source-independent.
-const repeatsFor = (cell: number) => Math.max(1, Math.floor(cell / SOURCE_TILE_SIZE));
-
-// Keeps the on-screen pattern size constant across cell sizes.
-export const scaleAdjustment = (cell: number) => (SOURCE_TILE_SIZE * repeatsFor(cell)) / cell;
 
 // Margin (bleeding buffer) sized as 2^levels texels so `levels` mip levels stay bleed-free,
 // capped at cell/4. Filled with the cell's own wrapped pattern by composeAtlas.
@@ -157,18 +153,16 @@ function paintTileCanvas(key: string, size: number): CanvasImageSource {
 
 export type AssembledAtlas = ImageBitmap | HTMLCanvasElement;
 
-// Composite the tiles onto the atlas grid; each cell is filled with reps x reps copies plus
-// enough extra rings to fill the whole margin with the pattern's wrapped content.
+// Composite one tile per cell (rendered at full `cell` texels), plus enough wrapped copies in
+// the surrounding rings to fill the mip margin seamlessly.
 async function composeAtlas(
   cell: number,
   mipLevels: number,
-  reps: number,
   images: Record<string, CanvasImageSource>
 ): Promise<AssembledAtlas> {
   const mapping = getAtlasMapping(cell, mipLevels);
   const pad = cellPadding(cell, mipLevels);
   const pitch = cell + 2 * pad;
-  const step = cell / reps;
   const canvas = createCanvas(pitch * 3, pitch * (PATTERN_ROWS.length + 1));
   const ctx = canvas.getContext('2d') as Ctx;
 
@@ -179,10 +173,10 @@ async function composeAtlas(
     ctx.beginPath();
     ctx.rect(frame.x - pad, frame.y - pad, cell + 2 * pad, cell + 2 * pad);
     ctx.clip();
-    const ext = Math.ceil(pad / step);
-    for (let i = -ext; i < reps + ext; i++) {
-      for (let j = -ext; j < reps + ext; j++) {
-        ctx.drawImage(img, frame.x + i * step, frame.y + j * step, step, step);
+    const ext = Math.ceil(pad / cell);
+    for (let i = -ext; i <= ext; i++) {
+      for (let j = -ext; j <= ext; j++) {
+        ctx.drawImage(img, frame.x + i * cell, frame.y + j * cell, cell, cell);
       }
     }
     ctx.restore();
@@ -195,30 +189,30 @@ async function composeAtlas(
 export type AtlasBuild = {
   atlas: Promise<AssembledAtlas>;
   mapping: PatternMapping;
-  scaleAdjustment: number;
   cell: number;
 };
 
+// `resolution` = atlas texels per tile (one native design tile rendered at that size). png is
+// fixed at its 64px export; svg/procedural rasterize crisp at any resolution. It only affects
+// sharpness — on-screen size is driven separately (see patternScale in the view).
 export function buildAtlas(opts: {
-  cellSize: number;
+  resolution: number;
   mipLevels: number;
   assetSource: PatternAssetSource;
 }): AtlasBuild {
-  const { cellSize: cell, mipLevels, assetSource } = opts;
-  const reps = repeatsFor(cell);
-  const step = cell / reps;
+  const { resolution: cell, mipLevels, assetSource } = opts;
 
   const atlas = (async () => {
     const images: Record<string, CanvasImageSource> = {};
     if (assetSource === 'procedural') {
-      for (const key of [...PATTERN_KEYS, 'solid']) images[key] = paintTileCanvas(key, step);
+      for (const key of [...PATTERN_KEYS, 'solid']) images[key] = paintTileCanvas(key, cell);
     } else {
       const urls = assetSource === 'png' ? CELL_PNG : assetSource === 'svg-figma' ? CELL_SVG_FIGMA : CELL_SVG;
       const load = assetSource === 'png' ? loadRaster : loadSvg;
       await Promise.all(Object.entries(urls).map(async ([key, url]) => (images[key] = await load(url))));
     }
-    return composeAtlas(cell, mipLevels, reps, images);
+    return composeAtlas(cell, mipLevels, images);
   })();
 
-  return { atlas, mapping: getAtlasMapping(cell, mipLevels), scaleAdjustment: scaleAdjustment(cell), cell };
+  return { atlas, mapping: getAtlasMapping(cell, mipLevels), cell };
 }
