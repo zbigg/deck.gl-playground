@@ -1,0 +1,40 @@
+<svg width="64" height="64" viewBox="0 384 64 64" xmlns="http://www.w3.org/2000/svg"><defs><mask id="mask12_7401_29176" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="384" width="64" height="64">
+<path d="M64 384H0V448H64V384Z" fill="black"/>
+</mask></defs><g mask="url(#mask12_7401_29176)">
+<path d="M0 384H8" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M0 448H8" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M0 416H8" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M0 400H8" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M0 432H8" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M8 392H16" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M8 424H16" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M8 408H16" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M8 440H16" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M16 400H24" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M16 432H24" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M16 416H24" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M16 384H24" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M16 448H24" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M24 408H32" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M24 440H32" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M24 424H32" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M24 392H32" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M32 416H40" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M32 384H40" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M32 448H40" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M32 432H40" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M32 400H40" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M40 424H48" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M40 392H48" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M40 440H48" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M40 408H48" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M48 416H56" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M48 384H56" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M48 448H56" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M48 432H56" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M48 400H56" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M56 424H64" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M56 392H64" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M56 440H64" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+<path d="M56 408H64" stroke="black" stroke-width="8" stroke-miterlimit="10"/>
+</g></svg>

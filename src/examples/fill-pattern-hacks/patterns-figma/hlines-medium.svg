@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="64 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="clip0_7401_29176">
+<rect width="64" height="64" fill="white" transform="translate(64)"/>
+</clipPath></defs><g clip-path="url(#clip0_7401_29176)">
+<path d="M64 8H128" stroke="black" stroke-width="2"/>
+<path d="M64 0H128" stroke="black" stroke-width="2"/>
+<path d="M64 24H128" stroke="black" stroke-width="2"/>
+<path d="M64 32H128" stroke="black" stroke-width="2"/>
+<path d="M64 16H128" stroke="black" stroke-width="2"/>
+<path d="M64 40H128" stroke="black" stroke-width="2"/>
+<path d="M64 48H128" stroke="black" stroke-width="2"/>
+<path d="M64 56H128" stroke="black" stroke-width="2"/>
+<path d="M64 64H128" stroke="black" stroke-width="2"/>
+</g></svg>

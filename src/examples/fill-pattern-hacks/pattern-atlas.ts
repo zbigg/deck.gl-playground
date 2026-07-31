@@ -8,7 +8,7 @@ export const FILL_UV_SCALE = 512 / 40_000_000;
 
 const SOURCE_TILE_SIZE = 64; // native period of every tile — png raster is 64×64, svg viewBox is 0 0 64 64
 
-export type PatternAssetSource = 'png' | 'svg' | 'procedural';
+export type PatternAssetSource = 'png' | 'svg' | 'svg-figma' | 'procedural';
 
 export const PATTERN_ROWS = [
   'hlines',
@@ -33,10 +33,14 @@ export type PatternMapping = Record<string, PatternFrame>;
 const asKey = (path: string) => path.replace(/^.*\//, '').replace(/\.(png|svg)$/, '');
 const pngUrls = import.meta.glob('./patterns/*.png', { eager: true, query: '?url', import: 'default' });
 const svgUrls = import.meta.glob('./patterns/*.svg', { eager: true, query: '?url', import: 'default' });
+// Per-tile SVGs sliced from the real Figma export (viewBox-cropped, mask/clip preserved).
+const svgFigmaUrls = import.meta.glob('./patterns-figma/*.svg', { eager: true, query: '?url', import: 'default' });
 const CELL_PNG: Record<string, string> = {};
 const CELL_SVG: Record<string, string> = {};
+const CELL_SVG_FIGMA: Record<string, string> = {};
 for (const [p, url] of Object.entries(pngUrls)) CELL_PNG[asKey(p)] = url as string;
 for (const [p, url] of Object.entries(svgUrls)) CELL_SVG[asKey(p)] = url as string;
+for (const [p, url] of Object.entries(svgFigmaUrls)) CELL_SVG_FIGMA[asKey(p)] = url as string;
 
 // Every source shares the same 64px native period, so density is source-independent.
 const repeatsFor = (cell: number) => Math.max(1, Math.floor(cell / SOURCE_TILE_SIZE));
@@ -209,7 +213,7 @@ export function buildAtlas(opts: {
     if (assetSource === 'procedural') {
       for (const key of [...PATTERN_KEYS, 'solid']) images[key] = paintTileCanvas(key, step);
     } else {
-      const urls = assetSource === 'png' ? CELL_PNG : CELL_SVG;
+      const urls = assetSource === 'png' ? CELL_PNG : assetSource === 'svg-figma' ? CELL_SVG_FIGMA : CELL_SVG;
       const load = assetSource === 'png' ? loadRaster : loadSvg;
       await Promise.all(Object.entries(urls).map(async ([key, url]) => (images[key] = await load(url))));
     }

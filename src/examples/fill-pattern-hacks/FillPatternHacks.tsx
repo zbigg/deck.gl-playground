@@ -104,7 +104,10 @@ export function FillPatternHacks() {
     lodMaxClamp: { value: init('lodMaxClamp', 0), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
     mipLevels: { value: init('mipLevels', 4), min: 1, max: 6, step: 1, label: 'margin mip levels' },
     cellSize: { value: init('cellSize', 128), options: { '128px': 128, '256px': 256 } },
-    assetSource: { value: init('assetSource', 'png'), options: ['png', 'svg', 'procedural'] },
+    assetSource: {
+      value: init('assetSource', 'png'),
+      options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' }
+    },
     seamFix: { value: init('seamFix', false), label: 'seam fix (#7326)' },
     fp64: { value: init('fp64', false), label: 'fp64 origin' },
     showLoupe: { value: init('showLoupe', true), label: 'loupe' },
