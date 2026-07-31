@@ -3,11 +3,20 @@ import DeckGL from '@deck.gl/react';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import type { MapViewState } from '@deck.gl/core';
 import { useControls } from 'leva';
+import { Map } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildAtlas, FILL_UV_SCALE, PATTERN_KEYS, type AtlasBuild, type PatternAssetSource } from './pattern-atlas';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
 
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
+
+// CARTO basemap styles.
+const CARTO_STYLES: Record<string, string> = {
+  positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  'dark-matter': 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+};
 
 const INITIAL_VIEW_STATE: MapViewState = { longitude: -3.7, latitude: 40.4, zoom: 4 };
 
@@ -24,8 +33,10 @@ export function FillPatternHacks() {
     cellSize,
     assetSource,
     seamFix,
-    fp64
+    fp64,
+    basemap
   } = useControls({
+    basemap: { value: 'positron', options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' } },
     pattern: { value: 'diag-right-medium', options: PATTERN_KEYS as unknown as string[] },
     sizing: { value: 'world', options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     worldScale: { value: 50, min: 1, max: 2000, step: 1, render: (get) => get('sizing') === 'world' },
@@ -90,8 +101,9 @@ export function FillPatternHacks() {
         onViewStateChange={({ viewState: vs }) => setViewState(vs as MapViewState)}
         controller={true}
         layers={layers}
-        style={{ background: '#0b0f14' }}
-      />
+      >
+        <Map mapStyle={CARTO_STYLES[basemap]} />
+      </DeckGL>
       <div
         style={{
           position: 'absolute',
