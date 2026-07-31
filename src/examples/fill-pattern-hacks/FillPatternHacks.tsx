@@ -125,7 +125,7 @@ export function FillPatternHacks() {
     lodMaxClamp: { value: init('lodMaxClamp', 0), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
     mipLevels: { value: init('mipLevels', 4), min: 1, max: 6, step: 1, label: 'margin mip levels' },
     renderResolution: {
-      value: init('renderResolution', 64),
+      value: init('renderResolution', 128),
       options: { '64px (1×)': 64, '128px (2×)': 128, '256px (4×)': 256 },
       label: 'render res (texels)',
       render: (get) => get('assetSource') !== 'png'
@@ -139,11 +139,11 @@ export function FillPatternHacks() {
       render: (get) => get('assetSource') === 'png'
     },
     assetSource: {
-      value: init('assetSource', 'png'),
+      value: init('assetSource', 'svg-figma'),
       options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' }
     },
-    seamFix: { value: init('seamFix', false), label: 'seam fix (#7326)' },
-    fp64: { value: init('fp64', false), label: 'fp64 origin' },
+    seamFix: { value: init('seamFix', true), label: 'seam fix (#7326)' },
+    fp64: { value: init('fp64', true), label: 'fp64 origin' },
     showLoupe: { value: init('showLoupe', true), label: 'loupe' },
     showAtlas: { value: init('showAtlas', true), label: 'atlas preview' }
   }));
@@ -196,13 +196,14 @@ export function FillPatternHacks() {
 
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
-  const zoom = Math.round(viewState.zoom ?? INITIAL_VIEW_STATE.zoom!);
+  const zoom = viewState.zoom ?? INITIAL_VIEW_STATE.zoom!;
+  const discreteZoom = Math.round(zoom); // discrete zoom actually used for the atlas / scale math
   const resolution = build?.cell ?? effectiveResolution; // atlas texels per tile
   // On-screen size is anchored to the 64px design unit and is independent of render resolution:
   // the (SOURCE_TILE_SIZE / resolution) factor cancels the shader's ×frame.width (= resolution),
   // so bumping resolution only sharpens. World = fixed geographic; follow-zoom = ~screenPx CSS.
   const onScreenBase =
-    sizing === 'world' ? 1 : effectiveScreenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, zoom));
+    sizing === 'world' ? 1 : effectiveScreenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, discreteZoom));
   const patternScale = (patternSize / 100) * onScreenBase * (SOURCE_TILE_SIZE / resolution);
 
   const layers = build
@@ -264,7 +265,7 @@ export function FillPatternHacks() {
           background: 'rgba(0,0,0,0.5)'
         }}
       >
-        zoom {zoom.toFixed(2)} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
+        zoom {zoom.toFixed(2)} → {discreteZoom} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
         {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
         {seamFix ? ' · seam-fix' : ''}
         {fp64 ? ' · fp64' : ''}
