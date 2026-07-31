@@ -21,6 +21,42 @@ const CARTO_STYLES: Record<string, string> = {
 
 const INITIAL_VIEW_STATE: MapViewState = { longitude: -3.7, latitude: 40.4, zoom: 4 };
 
+// Dark categorical palette — the pattern is a mask tinted by fillColor, and the default
+// basemap is light, so keep the tints dark and saturated for contrast.
+const COLOR_PALETTE: [number, number, number][] = [
+  [136, 46, 114],
+  [25, 101, 176],
+  [123, 65, 20],
+  [153, 0, 13],
+  [74, 20, 134],
+  [8, 64, 129],
+  [0, 68, 27],
+  [0, 88, 80],
+  [39, 100, 25],
+  [40, 40, 40],
+  [103, 0, 31],
+  [84, 39, 143],
+  [127, 39, 4],
+  [3, 78, 123],
+  [83, 0, 40],
+  [23, 64, 88]
+];
+
+type Feature = { properties?: Record<string, unknown> };
+function fillColorFor(f: Feature, mode: string): [number, number, number, number] {
+  const props = f.properties ?? {};
+  let idx: number;
+  if (mode === 'scalerank' && typeof props.scalerank === 'number') {
+    idx = props.scalerank;
+  } else {
+    const name = String(props.sr_subunit ?? props.name ?? '?').trim().toUpperCase();
+    idx = name.charCodeAt(0) || 0;
+  }
+  const n = COLOR_PALETTE.length;
+  const [r, g, b] = COLOR_PALETTE[((idx % n) + n) % n];
+  return [r, g, b, 255];
+}
+
 // Persist the leva controls + map view so nothing resets on reload / hot-reload.
 const STORE_KEY = 'deckgl-playground:fill-pattern-hacks';
 type Persisted = { controls?: Record<string, unknown>; viewState?: MapViewState };
@@ -48,6 +84,7 @@ export function FillPatternHacks() {
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
     },
     pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
+    colorBy: { value: init('colorBy', 'letter'), options: { 'name letter': 'letter', 'scale rank': 'scalerank' } },
     sizing: { value: init('sizing', 'world'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
@@ -59,8 +96,20 @@ export function FillPatternHacks() {
     seamFix: { value: init('seamFix', false), label: 'seam fix (#7326)' },
     fp64: { value: init('fp64', false), label: 'fp64 origin' }
   });
-  const { pattern, sizing, patternSize, screenPx, lodMaxClamp, mipLevels, cellSize, assetSource, seamFix, fp64, basemap } =
-    controls;
+  const {
+    pattern,
+    colorBy,
+    sizing,
+    patternSize,
+    screenPx,
+    lodMaxClamp,
+    mipLevels,
+    cellSize,
+    assetSource,
+    seamFix,
+    fp64,
+    basemap
+  } = controls;
 
   useEffect(() => {
     try {
@@ -95,7 +144,7 @@ export function FillPatternHacks() {
           data: COUNTRIES,
           stroked: true,
           filled: true,
-          getFillColor: [127, 60, 141, 255],
+          getFillColor: (f: Feature) => fillColorFor(f, colorBy),
           getLineColor: [20, 24, 28, 200],
           lineWidthMinPixels: 0.5,
           // Fill pattern (deck FillStyleExtension) — same descriptor shape api-client emits.
@@ -109,7 +158,8 @@ export function FillPatternHacks() {
           extensions: [extension],
           updateTriggers: {
             getFillPattern: pattern,
-            getFillPatternScale: patternScale
+            getFillPatternScale: patternScale,
+            getFillColor: colorBy
           }
         })
       ]
