@@ -8,6 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildAtlas, FILL_UV_SCALE, PATTERN_KEYS, type AtlasBuild, type PatternAssetSource } from './pattern-atlas';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
 import { Loupe } from './Loupe';
+import { AtlasPreview } from './AtlasPreview';
 
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
@@ -78,7 +79,7 @@ export function FillPatternHacks() {
 
   const [viewState, setViewState] = useState<MapViewState>(persisted.viewState ?? INITIAL_VIEW_STATE);
 
-  const controls = useControls({
+  const [controls, setControls] = useControls(() => ({
     basemap: {
       value: init('basemap', 'positron'),
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
@@ -94,8 +95,10 @@ export function FillPatternHacks() {
     cellSize: { value: init('cellSize', 128), options: { '128px': 128, '256px': 256 } },
     assetSource: { value: init('assetSource', 'png'), options: ['png', 'svg', 'procedural'] },
     seamFix: { value: init('seamFix', false), label: 'seam fix (#7326)' },
-    fp64: { value: init('fp64', false), label: 'fp64 origin' }
-  });
+    fp64: { value: init('fp64', false), label: 'fp64 origin' },
+    showLoupe: { value: init('showLoupe', true), label: 'loupe' },
+    showAtlas: { value: init('showAtlas', true), label: 'atlas preview' }
+  }));
   const {
     pattern,
     colorBy,
@@ -108,7 +111,9 @@ export function FillPatternHacks() {
     assetSource,
     seamFix,
     fp64,
-    basemap
+    basemap,
+    showLoupe,
+    showAtlas
   } = controls;
 
   useEffect(() => {
@@ -124,6 +129,17 @@ export function FillPatternHacks() {
   useEffect(() => {
     setBuild(buildAtlas({ cellSize, mipLevels, assetSource: assetSource as PatternAssetSource }));
   }, [cellSize, mipLevels, assetSource]);
+
+  // Resolve the assembled atlas image for the preview (deck consumes the same promise separately).
+  const [atlasImage, setAtlasImage] = useState<CanvasImageSource | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setAtlasImage(null);
+    build?.atlas.then((img) => !cancelled && setAtlasImage(img)).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [build]);
 
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
@@ -199,7 +215,17 @@ export function FillPatternHacks() {
         {seamFix ? ' · seam-fix' : ''}
         {fp64 ? ' · fp64' : ''}
       </div>
-      <Loupe containerRef={containerRef} mouseRef={mouseRef} />
+      {showAtlas && (
+        <AtlasPreview image={atlasImage} onClose={() => setControls({ showAtlas: false })} style={{ right: 230, bottom: 12 }} />
+      )}
+      {showLoupe && (
+        <Loupe
+          containerRef={containerRef}
+          mouseRef={mouseRef}
+          onClose={() => setControls({ showLoupe: false })}
+          style={{ right: 12, bottom: 12 }}
+        />
+      )}
     </div>
   );
 }

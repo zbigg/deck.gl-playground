@@ -1,24 +1,29 @@
-import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from 'react';
+import { Popup, ScaleButtons } from './Popup';
 
 // Pixel-perfect magnifier: samples the rendered canvases under the cursor and blits them at
 // 2x/4x/8x with nearest-neighbour scaling, so 1 rendered device pixel becomes N crisp pixels
 // (native OS zoom interpolates and lies about what's actually on screen).
 
 const SIZE = 200;
-const ZOOMS = [2, 4, 8] as const;
+const ZOOMS = [2, 4, 8];
 const ZOOM_KEY = 'deckgl-playground:loupe-zoom';
 
 export function Loupe({
   containerRef,
-  mouseRef
+  mouseRef,
+  onClose,
+  style
 }: {
   containerRef: RefObject<HTMLDivElement>;
   mouseRef: MutableRefObject<{ x: number; y: number } | null>;
+  onClose: () => void;
+  style?: CSSProperties;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [zoom, setZoom] = useState<number>(() => {
     const v = Number(localStorage.getItem(ZOOM_KEY));
-    return (ZOOMS as readonly number[]).includes(v) ? v : 4;
+    return ZOOMS.includes(v) ? v : 4;
   });
 
   useEffect(() => {
@@ -39,8 +44,10 @@ export function Loupe({
       const m = mouseRef.current;
       if (!container || !loupe || !ctx || !m) return;
 
-      // The rendered canvases (exclude the loupe's own). maplibre is the background, deck the overlay.
-      const canvases = Array.from(container.querySelectorAll('canvas')).filter((c) => c !== loupe);
+      // The rendered canvases (exclude our own overlay canvases). maplibre = background, deck = overlay.
+      const canvases = Array.from(container.querySelectorAll<HTMLCanvasElement>('canvas')).filter(
+        (c) => !c.dataset.overlay
+      );
       const mapCanvas = canvases.find((c) => c.className.includes('maplibregl')) ?? null;
       const deckCanvas = canvases.find((c) => !c.className.includes('maplibregl')) ?? null;
       const ref = deckCanvas ?? mapCanvas;
@@ -73,49 +80,14 @@ export function Loupe({
   }, [zoom, containerRef, mouseRef]);
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        right: 12,
-        bottom: 12,
-        width: SIZE,
-        pointerEvents: 'none', // let map interaction pass through; buttons re-enable below
-        background: 'rgba(15,20,25,0.92)',
-        border: '1px solid #334155',
-        borderRadius: 6,
-        overflow: 'hidden',
-        font: '11px ui-monospace, monospace',
-        color: '#cbd5e1'
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px' }}>
-        <span style={{ opacity: 0.7 }}>loupe</span>
-        <span style={{ flex: 1 }} />
-        {ZOOMS.map((z) => (
-          <button
-            key={z}
-            onClick={() => setZoom(z)}
-            style={{
-              pointerEvents: 'auto',
-              cursor: 'pointer',
-              padding: '1px 6px',
-              borderRadius: 3,
-              border: '1px solid #475569',
-              background: z === zoom ? '#3b82f6' : 'transparent',
-              color: z === zoom ? '#fff' : '#94a3b8',
-              font: 'inherit'
-            }}
-          >
-            {z}×
-          </button>
-        ))}
-      </div>
+    <Popup title="loupe" onClose={onClose} controls={<ScaleButtons value={zoom} onChange={setZoom} options={ZOOMS} />} style={style}>
       <canvas
         ref={canvasRef}
+        data-overlay="1"
         width={SIZE}
         height={SIZE}
         style={{ display: 'block', width: SIZE, height: SIZE, imageRendering: 'pixelated' }}
       />
-    </div>
+    </Popup>
   );
 }
