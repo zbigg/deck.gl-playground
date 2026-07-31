@@ -25,6 +25,14 @@ const CARTO_STYLES: Record<string, string> = {
   voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
 };
 
+// First label layer per style (Builder hardcodes this the same way): in interleaved
+// MapboxOverlay mode, deck layers with beforeId render under the basemap labels.
+const CARTO_STYLE_FIRST_LABEL_LAYER: Record<string, string> = {
+  positron: 'watername_ocean',
+  'dark-matter': 'watername_ocean',
+  voyager: 'watername_ocean'
+};
+
 const INITIAL_VIEW_STATE: MapViewState = { longitude: -3.7, latitude: 40.4, zoom: 4 };
 
 // Dark categorical palette — the pattern is a mask tinted by fillColor, and the default
@@ -212,6 +220,8 @@ export function FillPatternHacks() {
           data: COUNTRIES,
           stroked: true,
           filled: true,
+          // Only meaningful when interleaved; deck's own canvas always sits on top in classic mode.
+          beforeId: renderer === 'overlay' ? CARTO_STYLE_FIRST_LABEL_LAYER[basemap] : undefined,
           getFillColor: (f: Feature) => fillColorFor(f, colorBy),
           getLineColor: [20, 24, 28, 200],
           lineWidthMinPixels: 0.5,
