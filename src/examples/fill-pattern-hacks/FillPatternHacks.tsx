@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import DeckGL from '@deck.gl/react';
 import { GeoJsonLayer } from '@deck.gl/layers';
-import type { MapViewState } from '@deck.gl/core';
+import type { Layer, MapViewState } from '@deck.gl/core';
 import { useControls } from 'leva';
-import { Map } from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildAtlas, FILL_UV_SCALE, PATTERN_KEYS, type AtlasBuild, type PatternAssetSource } from './pattern-atlas';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
 import { Loupe } from './Loupe';
 import { AtlasPreview } from './AtlasPreview';
+import { DeckGLRenderer, MapboxOverlayRenderer } from './renderers';
 
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
@@ -91,6 +89,7 @@ export function FillPatternHacks() {
   const [viewState, setViewState] = useState<MapViewState>(persisted.viewState ?? INITIAL_VIEW_STATE);
 
   const [controls, setControls] = useControls(() => ({
+    renderer: { value: init('renderer', 'deckgl'), options: { DeckGL: 'deckgl', MapboxOverlay: 'overlay' } },
     basemap: {
       value: init('basemap', 'positron'),
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
@@ -114,6 +113,7 @@ export function FillPatternHacks() {
     showAtlas: { value: init('showAtlas', true), label: 'atlas preview' }
   }));
   const {
+    renderer,
     pattern,
     colorBy,
     sizing,
@@ -195,6 +195,8 @@ export function FillPatternHacks() {
       ]
     : [];
 
+  const Renderer = renderer === 'overlay' ? MapboxOverlayRenderer : DeckGLRenderer;
+
   return (
     <div
       ref={containerRef}
@@ -204,14 +206,12 @@ export function FillPatternHacks() {
       }}
       style={{ position: 'absolute', inset: 0 }}
     >
-      <DeckGL
+      <Renderer
         viewState={viewState}
-        onViewStateChange={({ viewState: vs }) => setViewState(vs as MapViewState)}
-        controller={true}
-        layers={layers}
-      >
-        <Map mapStyle={CARTO_STYLES[basemap]} preserveDrawingBuffer />
-      </DeckGL>
+        onViewStateChange={setViewState}
+        layers={layers as Layer[]}
+        mapStyle={CARTO_STYLES[basemap]}
+      />
       <div
         style={{
           position: 'absolute',
