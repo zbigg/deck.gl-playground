@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import type { Layer, MapViewState } from '@deck.gl/core';
 import { useControls } from 'leva';
@@ -88,6 +88,18 @@ function sanitizeViewState(vs: unknown): MapViewState | undefined {
   return { longitude, latitude, zoom, pitch, bearing } as MapViewState;
 }
 
+const PANEL_WIDTH = 360;
+
+const LINK_STYLE: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#2563eb',
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  font: 'inherit'
+};
+
 export function FillPatternHacks() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
@@ -109,7 +121,7 @@ export function FillPatternHacks() {
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
     screenPx: {
-      value: init('screenPx', 24),
+      value: init('screenPx', 64),
       min: 4,
       max: 200,
       step: 1,
@@ -145,7 +157,8 @@ export function FillPatternHacks() {
     seamFix: { value: init('seamFix', true), label: 'seam fix (#7326)' },
     fp64: { value: init('fp64', true), label: 'fp64 origin' },
     showLoupe: { value: init('showLoupe', true), label: 'loupe' },
-    showAtlas: { value: init('showAtlas', true), label: 'atlas preview' }
+    showAtlas: { value: init('showAtlas', true), label: 'atlas preview' },
+    showInfo: { value: init('showInfo', true), label: 'findings panel' }
   }));
   const {
     renderer,
@@ -161,7 +174,8 @@ export function FillPatternHacks() {
     fp64,
     basemap,
     showLoupe,
-    showAtlas
+    showAtlas,
+    showInfo
   } = controls;
 
   // png is a fixed 64px export: force both its render resolution and follow-zoom size to 64
@@ -239,15 +253,16 @@ export function FillPatternHacks() {
   const Renderer = renderer === 'overlay' ? MapboxOverlayRenderer : DeckGLRenderer;
 
   return (
-    <div
-      ref={containerRef}
-      onMouseMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      }}
-      style={{ position: 'absolute', inset: 0 }}
-    >
-      <Renderer
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <div
+        ref={containerRef}
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }}
+        style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: showInfo ? PANEL_WIDTH : 0 }}
+      >
+        <Renderer
         viewState={viewState}
         onViewStateChange={setViewState}
         layers={layers as Layer[]}
@@ -280,6 +295,110 @@ export function FillPatternHacks() {
           onClose={() => setControls({ showLoupe: false })}
           style={{ right: 12, bottom: 12 }}
         />
+      )}
+      </div>
+      {showInfo && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+              height: '100%',
+              width: PANEL_WIDTH,
+              boxSizing: 'border-box',
+              padding: '28px 26px',
+              overflowY: 'auto',
+              background: '#ffffff',
+              color: '#0f172a',
+              boxShadow: '10px 0 30px rgba(0,0,0,0.18)',
+              font: '14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif',
+              zIndex: 10
+            }}
+          >
+            <button
+              onClick={() => setControls({ showInfo: false })}
+              aria-label="close findings panel"
+              style={{
+                position: 'absolute',
+                top: 14,
+                right: 16,
+                border: 'none',
+                background: 'transparent',
+                fontSize: 20,
+                lineHeight: 1,
+                cursor: 'pointer',
+                color: '#94a3b8'
+              }}
+            >
+              ×
+            </button>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: '0.09em',
+                textTransform: 'uppercase',
+                color: '#6366f1'
+              }}
+            >
+              Polygon fill patterns
+            </div>
+            <h2 style={{ margin: '6px 0 22px', fontSize: 23, fontWeight: 700 }}>Rendering — key findings</h2>
+
+            <div style={{ marginBottom: 20, paddingLeft: 15, borderLeft: '3px solid #10b981' }}>
+              <div style={{ fontWeight: 700, marginBottom: 5 }}>Crispness</div>
+              <div style={{ color: '#334155' }}>
+                Higher <b>render resolution</b> with <b>fewer mip levels</b> gives sharper, crisper patterns. SVG
+                re-exported at <b>2× (128&nbsp;px)</b> beats the fixed 64&nbsp;px PNG on high-DPI screens.
+              </div>
+              <div style={{ marginTop: 10, fontSize: 13, color: '#334155' }}>
+                Try it (svg):{' '}
+                <button onClick={() => setControls({ renderResolution: 64 })} style={LINK_STYLE}>
+                  1×
+                </button>
+                {'  ·  '}
+                <button onClick={() => setControls({ renderResolution: 128 })} style={LINK_STYLE}>
+                  2×
+                </button>
+                {'  ·  '}
+                <button onClick={() => setControls({ renderResolution: 256 })} style={LINK_STYLE}>
+                  4×
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20, paddingLeft: 15, borderLeft: '3px solid #f59e0b' }}>
+              <div style={{ fontWeight: 700, marginBottom: 5 }}>Moiré / anti-aliasing</div>
+              <div style={{ color: '#334155' }}>
+                Raising <b>lodMaxClamp</b> (using more mip levels) noticeably <b>reduces</b> the shimmer / moiré when
+                zoomed out — it doesn't fully remove it, and costs a little crispness. The <b>sharpness ↔ moiré</b>{' '}
+                trade-off.
+              </div>
+              <div style={{ marginTop: 10, fontSize: 13, color: '#334155' }}>
+                Try it:{' '}
+                <button onClick={() => setControls({ lodMaxClamp: 0 })} style={LINK_STYLE}>
+                  mips off (moiré)
+                </button>
+                {'  ·  '}
+                <button onClick={() => setControls({ lodMaxClamp: 1 })} style={LINK_STYLE}>
+                  mips ≤ 1 (reduced)
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 26,
+                padding: '11px 13px',
+                borderRadius: 8,
+                background: '#f1f5f9',
+                font: '12px ui-monospace, monospace',
+                color: '#475569'
+              }}
+            >
+              now: {assetSource} · res {resolution}px · mips {lodMaxClamp === 0 ? 'off' : `≤${lodMaxClamp}`}
+            </div>
+          </div>
       )}
     </div>
   );
