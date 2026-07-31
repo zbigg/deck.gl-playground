@@ -154,7 +154,7 @@ export function FillPatternHacks() {
 
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
-  const zoom = viewState.zoom ?? INITIAL_VIEW_STATE.zoom!;
+  const zoom = Math.round(viewState.zoom ?? INITIAL_VIEW_STATE.zoom!);
   const cell = build?.cell ?? cellSize;
   // Base scale: world-anchored uses the atlas' scaleAdjustment (fixed geographic size, like
   // Builder); follow-zoom solves for a ~screenPx repeat at the current zoom. The user's
