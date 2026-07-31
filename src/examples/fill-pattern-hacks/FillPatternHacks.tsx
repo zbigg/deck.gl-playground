@@ -63,10 +63,21 @@ const STORE_KEY = 'deckgl-playground:fill-pattern-hacks';
 type Persisted = { controls?: Record<string, unknown>; viewState?: MapViewState };
 function loadPersisted(): Persisted {
   try {
-    return JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}');
+    const parsed = JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}');
+    return { ...parsed, viewState: sanitizeViewState(parsed.viewState) };
   } catch {
     return {};
   }
+}
+
+// Keep only the stable numeric view fields. Storing the raw viewState deck emits
+// during interaction can round-trip a dead transitionInterpolator/transitionDuration
+// (class instance → {}), which wedges the controller and breaks panning on reload.
+function sanitizeViewState(vs: unknown): MapViewState | undefined {
+  if (!vs || typeof vs !== 'object') return undefined;
+  const { longitude, latitude, zoom, pitch, bearing } = vs as Record<string, unknown>;
+  if (![longitude, latitude, zoom].every((n) => typeof n === 'number' && Number.isFinite(n))) return undefined;
+  return { longitude, latitude, zoom, pitch, bearing } as MapViewState;
 }
 
 export function FillPatternHacks() {
@@ -118,7 +129,7 @@ export function FillPatternHacks() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ controls, viewState }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ controls, viewState: sanitizeViewState(viewState) }));
     } catch {
       // storage may be blocked (private mode / sandbox) — persistence is best-effort.
     }
