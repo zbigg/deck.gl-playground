@@ -57,15 +57,10 @@ const COLOR_PALETTE: [number, number, number][] = [
 ];
 
 type Feature = { properties?: Record<string, unknown> };
-function fillColorFor(f: Feature, mode: string): [number, number, number, number] {
+function fillColorFor(f: Feature): [number, number, number, number] {
   const props = f.properties ?? {};
-  let idx: number;
-  if (mode === 'scalerank' && typeof props.scalerank === 'number') {
-    idx = props.scalerank;
-  } else {
-    const name = String(props.sr_subunit ?? props.name ?? '?').trim().toUpperCase();
-    idx = name.charCodeAt(0) || 0;
-  }
+  const name = String(props.sr_subunit ?? props.name ?? '?').trim().toUpperCase();
+  const idx = name.charCodeAt(0) || 0;
   const n = COLOR_PALETTE.length;
   const [r, g, b] = COLOR_PALETTE[((idx % n) + n) % n];
   return [r, g, b, 255];
@@ -110,7 +105,6 @@ export function FillPatternHacks() {
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
     },
     pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
-    colorBy: { value: init('colorBy', 'letter'), options: { 'name letter': 'letter', 'scale rank': 'scalerank' } },
     sizing: { value: init('sizing', 'world'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
@@ -156,7 +150,6 @@ export function FillPatternHacks() {
   const {
     renderer,
     pattern,
-    colorBy,
     sizing,
     patternSize,
     screenPx,
@@ -222,7 +215,7 @@ export function FillPatternHacks() {
           filled: true,
           // Only meaningful when interleaved; deck's own canvas always sits on top in classic mode.
           beforeId: renderer === 'overlay' ? CARTO_STYLE_FIRST_LABEL_LAYER[basemap] : undefined,
-          getFillColor: (f: Feature) => fillColorFor(f, colorBy),
+          getFillColor: fillColorFor,
           getLineColor: [20, 24, 28, 200],
           lineWidthMinPixels: 0.5,
           // Fill pattern (deck FillStyleExtension) — same descriptor shape api-client emits.
@@ -236,8 +229,7 @@ export function FillPatternHacks() {
           extensions: [extension],
           updateTriggers: {
             getFillPattern: pattern,
-            getFillPatternScale: patternScale,
-            getFillColor: colorBy
+            getFillPatternScale: patternScale
           }
         })
       ]
