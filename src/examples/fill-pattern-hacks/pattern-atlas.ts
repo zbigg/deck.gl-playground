@@ -44,6 +44,9 @@ for (const [p, url] of Object.entries(pngUrls)) CELL_PNG[asKey(p)] = url as stri
 for (const [p, url] of Object.entries(svgUrls)) CELL_SVG[asKey(p)] = url as string;
 for (const [p, url] of Object.entries(svgFigmaUrls)) CELL_SVG_FIGMA[asKey(p)] = url as string;
 
+// Single-tile SVG url for a pattern key — used by the legend to draw a swatch.
+export const patternSwatchUrl = (key: string): string | undefined => CELL_SVG_FIGMA[key] ?? CELL_SVG[key];
+
 // Margin (bleeding buffer) sized as 2^levels texels so `levels` mip levels stay bleed-free,
 // capped at cell/4. Filled with the cell's own wrapped pattern by composeAtlas.
 const cellPadding = (cell: number, mipLevels: number) => Math.max(2, Math.min(1 << mipLevels, Math.round(cell / 4)));

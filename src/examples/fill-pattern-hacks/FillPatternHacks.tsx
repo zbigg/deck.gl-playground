@@ -6,10 +6,18 @@ import {
   buildAtlas,
   FILL_UV_SCALE,
   PATTERN_KEYS,
+  patternSwatchUrl,
   SOURCE_TILE_SIZE,
   type AtlasBuild,
-  type PatternAssetSource
+  type PatternAssetSource,
+  type PatternKey
 } from './pattern-atlas';
+import {
+  buildEncoding,
+  PATTERN_COLUMN_LABELS,
+  type Feature as EncFeature,
+  type PatternColumn
+} from './pattern-encoding';
 import { CartoFillStyleExtension } from './CartoFillStyleExtension';
 import { Loupe } from './Loupe';
 import { AtlasPreview } from './AtlasPreview';
@@ -17,6 +25,15 @@ import { DeckGLRenderer, MapboxOverlayRenderer } from './renderers';
 
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
+// All 50 US states (served from /public). Carries per-state columns for data-driven patterns.
+const USA_STATES = '/usa_states_boundaries.geojson';
+
+// Home view per dataset — framed on the data. usa-states frames the continental US (AK/HI
+// sit off-frame, as on a typical national map) with the side panel open.
+const DATASET_HOME: Record<string, MapViewState> = {
+  countries: { longitude: -3.7, latitude: 40.4, zoom: 4, pitch: 0, bearing: 0 },
+  'usa-states': { longitude: -96, latitude: 38.5, zoom: 3.5, pitch: 0, bearing: 0 }
+};
 
 // CARTO basemap styles.
 const CARTO_STYLES: Record<string, string> = {
@@ -122,7 +139,15 @@ export function FillPatternHacks() {
   const saved = persisted.controls ?? {};
   const init = <T,>(key: string, fallback: T): T => (key in saved ? (saved[key] as T) : fallback);
 
-  const [viewState, setViewState] = useState<MapViewState>(persisted.viewState ?? INITIAL_VIEW_STATE);
+  // Only reuse the persisted view if it belongs to the dataset we're starting on; otherwise a
+  // view saved over Europe (countries) would leave the states off-screen. Falls back to the
+  // dataset's home frame.
+  const startDataset = init('dataset', 'usa-states');
+  const startView =
+    persisted.viewState && saved.dataset === startDataset
+      ? persisted.viewState
+      : DATASET_HOME[startDataset] ?? INITIAL_VIEW_STATE;
+  const [viewState, setViewState] = useState<MapViewState>(startView);
 
   const [controls, setControls] = useControls(() => ({
     renderer: { value: init('renderer', 'overlay'), options: { DeckGL: 'deckgl', MapboxOverlay: 'overlay' } },
@@ -136,7 +161,26 @@ export function FillPatternHacks() {
       label: 'DPR',
       render: () => window.devicePixelRatio !== 1
     },
-    pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
+    dataset: {
+      value: init('dataset', 'usa-states'),
+      options: { 'USA states': 'usa-states', Countries: 'countries' }
+    },
+    // Column driving getFillPattern. 'fixed' falls back to the single `pattern` below.
+    // Numeric columns only exist on the USA-states dataset.
+    patternColumn: {
+      value: init('patternColumn', 'unemp_rate'),
+      options: Object.fromEntries(
+        (Object.entries(PATTERN_COLUMN_LABELS) as [PatternColumn, string][]).map(([k, label]) => [label, k])
+      ),
+      render: (get) => get('dataset') === 'usa-states',
+      label: 'pattern by'
+    },
+    // Used when patternColumn is 'fixed' (or the countries dataset, which has no data columns).
+    pattern: {
+      value: init('pattern', 'diag-right-medium'),
+      options: PATTERN_KEYS as unknown as string[],
+      render: (get) => get('dataset') !== 'usa-states' || get('patternColumn') === 'fixed'
+    },
     sizing: { value: init('sizing', 'screen'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
@@ -183,6 +227,8 @@ export function FillPatternHacks() {
   const {
     renderer,
     dpr = 'native',
+    dataset,
+    patternColumn,
     pattern,
     sizing,
     patternSize,
@@ -229,6 +275,38 @@ export function FillPatternHacks() {
     };
   }, [build]);
 
+  // Load the states FeatureCollection once so we can derive class breaks + a legend from it
+  // (and hand the same object to the layer instead of re-fetching by URL).
+  const [statesData, setStatesData] = useState<GeoJSON.FeatureCollection | null>(null);
+  useEffect(() => {
+    if (dataset !== 'usa-states' || statesData) return;
+    let cancelled = false;
+    fetch(USA_STATES)
+      .then((r) => r.json())
+      .then((json) => !cancelled && setStatesData(json))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [dataset, statesData]);
+
+  // On an actual dataset switch, fly to that dataset's home view (skip the first mount so the
+  // persisted view is kept).
+  const prevDataset = useRef(dataset);
+  useEffect(() => {
+    if (prevDataset.current === dataset) return;
+    prevDataset.current = dataset;
+    if (DATASET_HOME[dataset]) setViewState(DATASET_HOME[dataset]);
+  }, [dataset]);
+
+  // Data-driven pattern encoding: column value → pattern key, plus legend entries.
+  const useData = dataset === 'usa-states';
+  const activeColumn = (useData ? patternColumn : 'fixed') as PatternColumn;
+  const encoding = useMemo(
+    () => buildEncoding(activeColumn, (statesData?.features ?? []) as EncFeature[], pattern as PatternKey),
+    [activeColumn, statesData, pattern]
+  );
+
   const extension = useMemo(() => new CartoFillStyleExtension({ pattern: true, seamFix, fp64 }), [seamFix, fp64]);
 
   const zoom = viewState.zoom ?? INITIAL_VIEW_STATE.zoom!;
@@ -245,8 +323,8 @@ export function FillPatternHacks() {
     ? [
         new GeoJsonLayer({
           // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
-          id: `countries-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
-          data: COUNTRIES,
+          id: `fill-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
+          data: useData ? statesData ?? USA_STATES : COUNTRIES,
           stroked: true,
           filled: true,
           // Only meaningful when interleaved; deck's own canvas always sits on top in classic mode.
@@ -259,12 +337,12 @@ export function FillPatternHacks() {
           fillPatternAtlas: build.atlas,
           fillPatternMapping: build.mapping,
           fillPatternMask: true,
-          getFillPattern: () => pattern,
+          getFillPattern: encoding.getPattern,
           getFillPatternScale: patternScale,
           textureParameters: { lodMaxClamp },
           extensions: [extension],
           updateTriggers: {
-            getFillPattern: pattern,
+            getFillPattern: encoding,
             getFillPatternScale: patternScale
           }
         })
@@ -411,6 +489,28 @@ export function FillPatternHacks() {
                 </button>
               </div>
             </div>
+
+            {useData && patternColumn !== 'fixed' && encoding.legend.length > 0 && (
+              <div style={{ marginTop: 26, paddingLeft: 15, borderLeft: '3px solid #6366f1' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                  Pattern by <code>{patternColumn}</code>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {encoding.legend.map((e) => (
+                    <div key={e.pattern + e.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <img
+                        src={patternSwatchUrl(e.pattern)}
+                        alt={e.pattern}
+                        width={22}
+                        height={22}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 3, background: '#fff' }}
+                      />
+                      <span style={{ fontSize: 13, color: '#334155' }}>{e.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div
               style={{
