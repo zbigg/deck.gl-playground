@@ -203,6 +203,14 @@ export function FillPatternHacks() {
     // 3D: tilt to a grazing angle so pattern footprints elongate (where anisotropy actually
     // differs from mips), and unlock pitch/bearing drag. Off = locked flat top-down.
     view3d: { value: init('view3d', false), label: '3D (tilt)' },
+    pitch3d: {
+      value: init('pitch3d', 44),
+      min: 0,
+      max: 60,
+      step: 1,
+      label: 'pitch °',
+      render: (get) => get('view3d')
+    },
     dpr: {
       value: init('dpr', 'native'),
       options: { native: 'native', 'force 1×': 'one' },
@@ -294,6 +302,7 @@ export function FillPatternHacks() {
     renderer,
     dpr = 'native',
     view3d,
+    pitch3d = 44,
     dataset,
     patternColumn,
     pattern,
@@ -367,14 +376,19 @@ export function FillPatternHacks() {
     if (DATASET_HOME[dataset]) setViewState(DATASET_HOME[dataset]);
   }, [dataset]);
 
-  // Toggling 3D tilts to a grazing angle (44°) / snaps back flat. Only on an actual toggle, so a
-  // persisted pitch survives reload and mid-session pitch drags aren't stomped.
+  // Toggling 3D tilts to the configured pitch / snaps back flat; moving the pitch slider while
+  // in 3D applies live. Map-drag pitch changes and persisted pitch are otherwise untouched (no
+  // sync back into the slider), so reloads and mid-session drags aren't stomped.
   const prev3d = useRef(view3d);
   useEffect(() => {
-    if (prev3d.current === view3d) return;
+    const toggled = prev3d.current !== view3d;
     prev3d.current = view3d;
-    setViewState((vs) => ({ ...vs, pitch: view3d ? 44 : 0, bearing: view3d ? vs.bearing ?? 0 : 0 }));
-  }, [view3d]);
+    if (toggled) {
+      setViewState((vs) => ({ ...vs, pitch: view3d ? pitch3d : 0, bearing: view3d ? vs.bearing ?? 0 : 0 }));
+    } else if (view3d) {
+      setViewState((vs) => ({ ...vs, pitch: pitch3d }));
+    }
+  }, [view3d, pitch3d]);
 
   const useMatrix = dataset === 'matrix';
 
