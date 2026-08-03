@@ -365,6 +365,9 @@ export function FillPatternHacks() {
         style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: showInfo ? PANEL_WIDTH : 0 }}
       >
         <Renderer
+          // Interleaved (overlay) mode can only take a DPR change at maplibre construction, so
+          // remount it when the forced ratio changes; classic mode updates in place (stable key).
+          key={renderer === 'overlay' ? `overlay-${forcedPixelRatio ?? 'native'}` : 'deckgl'}
           viewState={viewState}
           onViewStateChange={setViewState}
           layers={layers as Layer[]}
