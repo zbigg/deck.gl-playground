@@ -248,7 +248,7 @@ export function FillPatternHacks() {
     },
     // Hidden for the matrix dataset — there they become the two grid axes and vary per layer.
     lodMaxClamp: {
-      value: init('lodMaxClamp', 0),
+      value: init('lodMaxClamp', 2),
       min: 0,
       max: 8,
       step: 1,
@@ -258,7 +258,7 @@ export function FillPatternHacks() {
     // Anisotropic filtering: N texture taps along the axis of compression. 1 = off. Needs mips
     // (raise lodMaxClamp) to bite. Kills minification moiré with far less crispness loss than mips alone.
     maxAnisotropy: {
-      value: init('maxAnisotropy', 1),
+      value: init('maxAnisotropy', 4),
       min: 1,
       max: 16,
       step: 1,

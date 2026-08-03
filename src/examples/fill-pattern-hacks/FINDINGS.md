@@ -4,7 +4,7 @@ Port target: **carto-api-client** (atlas gen) + **cloud-native** (Builder / Fill
 
 ## TL;DR
 
-Ship: **one tile per cell + render resolution**, **seam fix + fp64 BOTH on**, **mip levels 4**, **SVG re-exported @2 (128px)**. Moiré = texture minification aliasing (not MSAA's job): keep **mips on always** (≈free); reach for **anisotropy 4–8× only when tilted** (free when flat, the only knob that can cost you).
+Ship: **one tile per cell + render resolution**, **seam fix + fp64 BOTH on**, **mip levels 4**, **SVG re-exported @2 (128px)**. Moiré = texture minification aliasing (not MSAA's job): keep **mips on always** (≈free); reach for **anisotropy 4–8× only when tilted** (free when flat, the only knob that can cost you). **Best-looking default combo from the matrix: `lodMaxClamp 2` + `maxAnisotropy 4`** — crisp with moiré well-suppressed.
 
 ## 1. SVG quality = resolution, not tile-repeat
 
@@ -43,6 +43,7 @@ Ship: **one tile per cell + render resolution**, **seam fix + fp64 BOTH on**, **
 - Interacts with mips: picks a **finer LOD** keyed to the footprint's *minor* axis, then takes **N trilinear taps** along the *major* axis. Needs mips available to bite (`lodMaxClamp` > 0).
 - Only differs from plain trilinear when the footprint is **elongated** — i.e. at a **grazing angle**. On a flat top-down map (pitch 0) the footprint is square (`major/minor ≈ 1`) → aniso ≡ trilinear, **no visible difference**. Must tilt to see it.
 - Wins vs mips-only: kills minification moiré with **far less crispness loss** (mips over-blur the minor axis; aniso keeps it sharp).
+- **Winner from the matrix: `lodMaxClamp 2` + `maxAnisotropy 4`** — best crispness↔moiré balance; now the demo defaults.
 
 ## 7. Performance
 
