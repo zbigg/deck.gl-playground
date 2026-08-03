@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
-import { GeoJsonLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, SolidPolygonLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, MapViewState } from '@deck.gl/core';
 import { useControls } from 'leva';
 import {
@@ -32,8 +32,53 @@ const USA_STATES = '/usa_states_boundaries.geojson';
 // sit off-frame, as on a typical national map) with the side panel open.
 const DATASET_HOME: Record<string, MapViewState> = {
   countries: { longitude: -3.7, latitude: 40.4, zoom: 4, pitch: 0, bearing: 0 },
-  'usa-states': { longitude: -96, latitude: 38.5, zoom: 3.5, pitch: 0, bearing: 0 }
+  'usa-states': { longitude: -96, latitude: 38.5, zoom: 3.5, pitch: 0, bearing: 0 },
+  // Synthetic LOD×aniso grid: centered on (0,0), spanning ~2/3 of the world → whole-world zoom.
+  matrix: { longitude: 0, latitude: 0, zoom: 1.2, pitch: 0, bearing: 0 }
 };
+
+// LOD×anisotropy comparison grid: synthetic quads centered on the origin, one per (lodMaxClamp,
+// maxAnisotropy) combo. The grid spans ~2/3 of the world so the pattern is heavily minified (moiré
+// regime) by default.
+const LOD_VALUES = [0, 1, 2, 4, 8]; // rows: lodMaxClamp (mip levels the sampler may use)
+const ANISO_VALUES = [1, 2, 4, 8, 16]; // cols: maxAnisotropy (taps along the compression axis)
+const GRID_W = 240; // ~2/3 of 360° lon
+const GRID_H = 113; // ~2/3 of the mercator-safe lat range (±~85°)
+
+type MatrixCell = { lod: number; aniso: number; ring: [number, number][]; cx: number; cy: number };
+function buildMatrix(): MatrixCell[] {
+  const nCols = ANISO_VALUES.length;
+  const nRows = LOD_VALUES.length;
+  const gapFrac = 0.12;
+  const cellW = GRID_W / (nCols + (nCols - 1) * gapFrac);
+  const cellH = GRID_H / (nRows + (nRows - 1) * gapFrac);
+  const startX = -GRID_W / 2;
+  const startY = GRID_H / 2;
+  const cells: MatrixCell[] = [];
+  LOD_VALUES.forEach((lod, r) => {
+    const yTop = startY - r * cellH * (1 + gapFrac);
+    const yBot = yTop - cellH;
+    ANISO_VALUES.forEach((aniso, c) => {
+      const xLeft = startX + c * cellW * (1 + gapFrac);
+      const xRight = xLeft + cellW;
+      cells.push({
+        lod,
+        aniso,
+        cx: (xLeft + xRight) / 2,
+        cy: (yTop + yBot) / 2,
+        ring: [
+          [xLeft, yTop],
+          [xRight, yTop],
+          [xRight, yBot],
+          [xLeft, yBot],
+          [xLeft, yTop]
+        ]
+      });
+    });
+  });
+  return cells;
+}
+const MATRIX = buildMatrix();
 
 // CARTO basemap styles.
 const CARTO_STYLES: Record<string, string> = {
@@ -155,6 +200,9 @@ export function FillPatternHacks() {
       value: init('basemap', 'positron'),
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
     },
+    // 3D: tilt to a grazing angle so pattern footprints elongate (where anisotropy actually
+    // differs from mips), and unlock pitch/bearing drag. Off = locked flat top-down.
+    view3d: { value: init('view3d', false), label: '3D (tilt)' },
     dpr: {
       value: init('dpr', 'native'),
       options: { native: 'native', 'force 1×': 'one' },
@@ -163,7 +211,7 @@ export function FillPatternHacks() {
     },
     dataset: {
       value: init('dataset', 'usa-states'),
-      options: { 'USA states': 'usa-states', Countries: 'countries' }
+      options: { 'USA states': 'usa-states', Countries: 'countries', 'LOD×aniso matrix': 'matrix' }
     },
     // Column driving getFillPattern. 'fixed' falls back to the single `pattern` below.
     // Numeric columns only exist on the USA-states dataset.
@@ -198,7 +246,25 @@ export function FillPatternHacks() {
       label: 'screenPx',
       render: (get) => get('sizing') === 'screen' && get('assetSource') === 'png'
     },
-    lodMaxClamp: { value: init('lodMaxClamp', 0), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
+    // Hidden for the matrix dataset — there they become the two grid axes and vary per layer.
+    lodMaxClamp: {
+      value: init('lodMaxClamp', 0),
+      min: 0,
+      max: 8,
+      step: 1,
+      label: 'lodMaxClamp (mips)',
+      render: (get) => get('dataset') !== 'matrix'
+    },
+    // Anisotropic filtering: N texture taps along the axis of compression. 1 = off. Needs mips
+    // (raise lodMaxClamp) to bite. Kills minification moiré with far less crispness loss than mips alone.
+    maxAnisotropy: {
+      value: init('maxAnisotropy', 1),
+      min: 1,
+      max: 16,
+      step: 1,
+      label: 'maxAnisotropy',
+      render: (get) => get('dataset') !== 'matrix'
+    },
     mipLevels: { value: init('mipLevels', 4), min: 1, max: 6, step: 1, label: 'margin mip levels' },
     renderResolution: {
       value: init('renderResolution', 128),
@@ -227,6 +293,7 @@ export function FillPatternHacks() {
   const {
     renderer,
     dpr = 'native',
+    view3d,
     dataset,
     patternColumn,
     pattern,
@@ -234,6 +301,7 @@ export function FillPatternHacks() {
     patternSize,
     screenPx = 64,
     lodMaxClamp,
+    maxAnisotropy,
     mipLevels,
     renderResolution,
     assetSource,
@@ -299,6 +367,17 @@ export function FillPatternHacks() {
     if (DATASET_HOME[dataset]) setViewState(DATASET_HOME[dataset]);
   }, [dataset]);
 
+  // Toggling 3D tilts to a grazing angle (44°) / snaps back flat. Only on an actual toggle, so a
+  // persisted pitch survives reload and mid-session pitch drags aren't stomped.
+  const prev3d = useRef(view3d);
+  useEffect(() => {
+    if (prev3d.current === view3d) return;
+    prev3d.current = view3d;
+    setViewState((vs) => ({ ...vs, pitch: view3d ? 44 : 0, bearing: view3d ? vs.bearing ?? 0 : 0 }));
+  }, [view3d]);
+
+  const useMatrix = dataset === 'matrix';
+
   // Data-driven pattern encoding: column value → pattern key, plus legend entries.
   const useData = dataset === 'usa-states';
   const activeColumn = (useData ? patternColumn : 'fixed') as PatternColumn;
@@ -319,40 +398,99 @@ export function FillPatternHacks() {
     sizing === 'world' ? 1 : effectiveScreenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, discreteZoom));
   const patternScale = (patternSize / 100) * onScreenBase * (SOURCE_TILE_SIZE / resolution);
 
-  const layers = build
-    ? [
-        new GeoJsonLayer({
-          // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
-          id: `fill-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}`,
-          data: useData ? statesData ?? USA_STATES : COUNTRIES,
-          stroked: true,
-          filled: true,
-          // Only meaningful when interleaved; deck's own canvas always sits on top in classic mode.
-          beforeId: renderer === 'overlay' ? CARTO_STYLE_FIRST_LABEL_LAYER[basemap] : undefined,
-          getFillColor: fillColorFor,
-          getLineColor: [20, 24, 28, 200],
-          lineWidthMinPixels: 0.5,
-          // Fill pattern (deck FillStyleExtension) — same descriptor shape api-client emits.
-          fillPatternEnabled: true,
-          fillPatternAtlas: build.atlas,
-          fillPatternMapping: build.mapping,
-          fillPatternMask: true,
-          getFillPattern: encoding.getPattern,
-          getFillPatternScale: patternScale,
-          textureParameters: { lodMaxClamp },
-          extensions: [extension],
-          updateTriggers: {
-            getFillPattern: encoding,
-            getFillPatternScale: patternScale
-          }
-        })
-      ]
-    : [];
+  const beforeId = renderer === 'overlay' ? CARTO_STYLE_FIRST_LABEL_LAYER[basemap] : undefined;
+  const patternProps = build && {
+    fillPatternEnabled: true,
+    fillPatternAtlas: build.atlas,
+    fillPatternMapping: build.mapping,
+    fillPatternMask: true,
+    getFillPatternScale: patternScale,
+    extensions: [extension]
+  };
+
+  const dataLayers =
+    build && patternProps
+      ? [
+          new GeoJsonLayer({
+            // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
+            id: `fill-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}-${maxAnisotropy}`,
+            data: useData ? statesData ?? USA_STATES : COUNTRIES,
+            stroked: true,
+            filled: true,
+            // Only meaningful when interleaved; deck's own canvas always sits on top in classic mode.
+            beforeId,
+            getFillColor: fillColorFor,
+            getLineColor: [20, 24, 28, 200],
+            lineWidthMinPixels: 0.5,
+            // Fill pattern (deck FillStyleExtension) — same descriptor shape api-client emits.
+            ...patternProps,
+            getFillPattern: encoding.getPattern,
+            textureParameters: { lodMaxClamp, maxAnisotropy },
+            updateTriggers: { getFillPattern: encoding, getFillPatternScale: patternScale }
+          })
+        ]
+      : [];
+
+  // Matrix: one pattern layer per (lod, aniso) cell — identical FSE settings except the sampler.
+  const matrixLayers =
+    build && patternProps
+      ? [
+          new SolidPolygonLayer<MatrixCell>({
+            id: 'matrix-bg',
+            data: MATRIX,
+            getPolygon: (d) => [d.ring],
+            getFillColor: [255, 255, 255, 90],
+            // @ts-expect-error beforeId is a valid interleaved-MapboxOverlay prop, absent from primitive-layer types
+            beforeId
+          }),
+          ...MATRIX.map(
+            (cell) =>
+              new GeoJsonLayer({
+                id: `cell-${cell.lod}-${cell.aniso}-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}`,
+                data: {
+                  type: 'FeatureCollection',
+                  features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [cell.ring] } }]
+                } as GeoJSON.FeatureCollection,
+                stroked: true,
+                filled: true,
+                beforeId,
+                getFillColor: [30, 30, 30, 255],
+                getLineColor: [15, 23, 42, 180],
+                lineWidthMinPixels: 1,
+                ...patternProps,
+                getFillPattern: () => pattern,
+                textureParameters: { lodMaxClamp: cell.lod, maxAnisotropy: cell.aniso },
+                updateTriggers: { getFillPattern: pattern, getFillPatternScale: patternScale }
+              })
+          ),
+          new TextLayer<MatrixCell>({
+            id: 'matrix-labels',
+            data: MATRIX,
+            getPosition: (d) => [d.cx, d.cy],
+            getText: (d) => `lod ${d.lod} · aniso ${d.aniso}×`,
+            getSize: 13,
+            sizeUnits: 'pixels',
+            getColor: [15, 23, 42, 255],
+            background: true,
+            getBackgroundColor: [255, 255, 255, 215],
+            backgroundPadding: [5, 3],
+            fontFamily: 'ui-monospace, monospace',
+            billboard: true,
+            // Draw on top in 3D: without this the labels depth-fight / sink into the tilted quads.
+            parameters: { depthCompare: 'always', depthWriteEnabled: false }
+          })
+        ]
+      : [];
+
+  const layers = useMatrix ? matrixLayers : dataLayers;
 
   const nativeDpr = useNativeDevicePixelRatio();
   const forcedPixelRatio = dpr === 'one' && nativeDpr !== 1 ? 1 : undefined;
 
   const Renderer = renderer === 'overlay' ? MapboxOverlayRenderer : DeckGLRenderer;
+
+  const handleTilt = () => setControls({ view3d: true });
+  const handleFlat = () => setControls({ view3d: false });
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
@@ -373,6 +511,7 @@ export function FillPatternHacks() {
           layers={layers as Layer[]}
           mapStyle={CARTO_STYLES[basemap]}
           pixelRatio={forcedPixelRatio}
+          rotate={view3d}
         />
         <div
           style={{
@@ -389,6 +528,7 @@ export function FillPatternHacks() {
           dpr {forcedPixelRatio ? `${nativeDpr} → 1 (forced)` : nativeDpr} · zoom {zoom.toFixed(2)} → {discreteZoom} ·{' '}
           {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
           {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
+          {maxAnisotropy > 1 ? ` · aniso ${maxAnisotropy}×` : ''}
           {seamFix ? ' · seam-fix' : ''}
           {fp64 ? ' · fp64' : ''}
         </div>
@@ -493,6 +633,49 @@ export function FillPatternHacks() {
               </div>
             </div>
 
+            <div style={{ marginBottom: 20, paddingLeft: 15, borderLeft: '3px solid #0ea5e9' }}>
+              <div style={{ fontWeight: 700, marginBottom: 5 }}>Anisotropic filtering</div>
+              <div style={{ color: '#334155' }}>
+                Pattern moiré is texture minification aliasing in the fill <i>interior</i>. <b>Anisotropy</b> takes
+                several texture taps along the axis the pattern is compressed on, killing the shimmer with <b>far less
+                crispness loss than mips alone</b>. It needs mips available to bite — and only differs from plain mips
+                where the footprint is <b>elongated</b>, i.e. at a <b>grazing angle</b>. On a flat top-down map (pitch 0)
+                the footprint is square, so aniso and trilinear look identical.
+              </div>
+              <div style={{ marginTop: 10, fontSize: 13, color: '#334155' }}>
+                1 — enable <b>3D</b>: <button onClick={handleTilt} style={LINK_STYLE}>tilt 44°</button>
+                {'  ·  '}
+                <button onClick={handleFlat} style={LINK_STYLE}>flat</button>
+                {' '}(or use the “3D (tilt)” toggle; then drag to pitch/rotate)
+              </div>
+              <div style={{ marginTop: 6, fontSize: 13, color: '#334155' }}>
+                2 — then compare (look toward the horizon):{' '}
+                <button onClick={() => setControls({ lodMaxClamp: 8, maxAnisotropy: 1 })} style={LINK_STYLE}>
+                  aniso off
+                </button>
+                {'  ·  '}
+                <button onClick={() => setControls({ lodMaxClamp: 8, maxAnisotropy: 4 })} style={LINK_STYLE}>
+                  4×
+                </button>
+                {'  ·  '}
+                <button onClick={() => setControls({ lodMaxClamp: 8, maxAnisotropy: 16 })} style={LINK_STYLE}>
+                  16×
+                </button>
+              </div>
+            </div>
+
+            {useMatrix && (
+              <div style={{ marginTop: 26, paddingLeft: 15, borderLeft: '3px solid #6366f1' }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>LOD × anisotropy matrix</div>
+                <div style={{ color: '#334155' }}>
+                  Every quad is the <b>same</b> FSE setup (pattern, asset, res, mip margin, seam, fp64) and differs{' '}
+                  <b>only</b> in its sampler: rows = <code>lodMaxClamp</code> {LOD_VALUES.join(', ')}, cols ={' '}
+                  <code>maxAnisotropy</code> {ANISO_VALUES.map((a) => `${a}×`).join(', ')}. Enable <b>3D</b> to make the
+                  anisotropy columns diverge; scan for the crispest + most stable cell.
+                </div>
+              </div>
+            )}
+
             {useData && patternColumn !== 'fixed' && encoding.legend.length > 0 && (
               <div style={{ marginTop: 26, paddingLeft: 15, borderLeft: '3px solid #6366f1' }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
@@ -525,7 +708,8 @@ export function FillPatternHacks() {
                 color: '#475569'
               }}
             >
-              now: {assetSource} · res {resolution}px · mips {lodMaxClamp === 0 ? 'off' : `≤${lodMaxClamp}`}
+              now: {assetSource} · res {resolution}px · mips {lodMaxClamp === 0 ? 'off' : `≤${lodMaxClamp}`} · aniso{' '}
+              {maxAnisotropy > 1 ? `${maxAnisotropy}×` : 'off'}
             </div>
           </div>
       )}

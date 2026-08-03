@@ -13,6 +13,8 @@ export type MapRendererProps = {
   mapStyle: string;
   // Rendering DPR override; undefined = native devicePixelRatio.
   pixelRatio?: number;
+  // Allow pitch/bearing drag (3D). When false the camera is locked flat top-down.
+  rotate?: boolean;
 };
 
 // NOTE: maplibre reads pixelRatio only at construction, and setPixelRatio() at runtime resizes
@@ -23,12 +25,12 @@ export type MapRendererProps = {
 
 // Classic: deck.gl owns the camera and renders its own canvas over a maplibre base map (two
 // canvases; deck composites on top).
-export function DeckGLRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio }: MapRendererProps) {
+export function DeckGLRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio, rotate }: MapRendererProps) {
   return (
     <DeckGL
       viewState={viewState}
       onViewStateChange={({ viewState: vs }) => onViewStateChange(vs as MapViewState)}
-      controller={true}
+      controller={{ dragRotate: !!rotate, touchRotate: !!rotate }}
       layers={layers}
       useDevicePixels={pixelRatio ?? true}
     >
@@ -46,7 +48,7 @@ function DeckControl({ layers }: { layers: Layer[] }) {
 
 // MapboxOverlay: maplibre owns the camera; deck is added as an interleaved control, sharing
 // maplibre's context and projection (single canvas — maplibre's pixelRatio is the only DPR knob).
-export function MapboxOverlayRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio }: MapRendererProps) {
+export function MapboxOverlayRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio, rotate }: MapRendererProps) {
   return (
     <Map
       pixelRatio={pixelRatio}
@@ -55,6 +57,9 @@ export function MapboxOverlayRenderer({ viewState, onViewStateChange, layers, ma
       zoom={viewState.zoom}
       pitch={viewState.pitch}
       bearing={viewState.bearing}
+      dragRotate={!!rotate}
+      touchPitch={!!rotate}
+      pitchWithRotate={!!rotate}
       onMove={(e) => onViewStateChange(e.viewState as unknown as MapViewState)}
       mapStyle={mapStyle}
       preserveDrawingBuffer
