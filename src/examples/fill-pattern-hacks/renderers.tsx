@@ -1,5 +1,6 @@
+import { useEffect, useRef, type RefObject } from 'react';
 import DeckGL from '@deck.gl/react';
-import { Map, useControl } from 'react-map-gl/maplibre';
+import { Map, useControl, type MapRef } from 'react-map-gl/maplibre';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, MapViewState } from '@deck.gl/core';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -11,19 +12,32 @@ export type MapRendererProps = {
   onViewStateChange: (viewState: MapViewState) => void;
   layers: Layer[];
   mapStyle: string;
+  // Rendering DPR override; undefined = native devicePixelRatio.
+  pixelRatio?: number;
 };
+
+// maplibre reads pixelRatio only at construction (covered by the Map prop); this applies
+// later changes at runtime without remounting the map.
+function useMaplibrePixelRatio(mapRef: RefObject<MapRef>, pixelRatio?: number) {
+  useEffect(() => {
+    mapRef.current?.getMap().setPixelRatio(pixelRatio ?? window.devicePixelRatio);
+  }, [mapRef, pixelRatio]);
+}
 
 // Classic: deck.gl owns the camera and renders its own canvas over a maplibre base map (two
 // canvases; deck composites on top).
-export function DeckGLRenderer({ viewState, onViewStateChange, layers, mapStyle }: MapRendererProps) {
+export function DeckGLRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio }: MapRendererProps) {
+  const mapRef = useRef<MapRef>(null);
+  useMaplibrePixelRatio(mapRef, pixelRatio);
   return (
     <DeckGL
       viewState={viewState}
       onViewStateChange={({ viewState: vs }) => onViewStateChange(vs as MapViewState)}
       controller={true}
       layers={layers}
+      useDevicePixels={pixelRatio ?? true}
     >
-      <Map mapStyle={mapStyle} preserveDrawingBuffer />
+      <Map ref={mapRef} mapStyle={mapStyle} pixelRatio={pixelRatio} preserveDrawingBuffer />
     </DeckGL>
   );
 }
@@ -36,10 +50,14 @@ function DeckControl({ layers }: { layers: Layer[] }) {
 }
 
 // MapboxOverlay: maplibre owns the camera; deck is added as an interleaved control, sharing
-// maplibre's context and projection (single canvas).
-export function MapboxOverlayRenderer({ viewState, onViewStateChange, layers, mapStyle }: MapRendererProps) {
+// maplibre's context and projection (single canvas — maplibre's pixelRatio is the only DPR knob).
+export function MapboxOverlayRenderer({ viewState, onViewStateChange, layers, mapStyle, pixelRatio }: MapRendererProps) {
+  const mapRef = useRef<MapRef>(null);
+  useMaplibrePixelRatio(mapRef, pixelRatio);
   return (
     <Map
+      ref={mapRef}
+      pixelRatio={pixelRatio}
       longitude={viewState.longitude}
       latitude={viewState.latitude}
       zoom={viewState.zoom}

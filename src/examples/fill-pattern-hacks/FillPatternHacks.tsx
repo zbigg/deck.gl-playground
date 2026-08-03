@@ -90,6 +90,18 @@ function sanitizeViewState(vs: unknown): MapViewState | undefined {
   return { longitude, latitude, zoom, pitch, bearing } as MapViewState;
 }
 
+// Native DPR is live — it changes when the window moves to a monitor with a different scale.
+function useNativeDevicePixelRatio(): number {
+  const [dpr, setDpr] = useState(() => window.devicePixelRatio);
+  useEffect(() => {
+    const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    const onChange = () => setDpr(window.devicePixelRatio);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [dpr]);
+  return dpr;
+}
+
 const PANEL_WIDTH = 360;
 
 const LINK_STYLE: CSSProperties = {
@@ -117,6 +129,12 @@ export function FillPatternHacks() {
     basemap: {
       value: init('basemap', 'positron'),
       options: { Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
+    },
+    dpr: {
+      value: init('dpr', 'native'),
+      options: { native: 'native', 'force 1×': 'one' },
+      label: 'DPR',
+      render: () => window.devicePixelRatio !== 1
     },
     pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
     sizing: { value: init('sizing', 'screen'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
@@ -164,6 +182,7 @@ export function FillPatternHacks() {
   }));
   const {
     renderer,
+    dpr = 'native',
     pattern,
     sizing,
     patternSize,
@@ -252,6 +271,9 @@ export function FillPatternHacks() {
       ]
     : [];
 
+  const nativeDpr = useNativeDevicePixelRatio();
+  const forcedPixelRatio = dpr === 'one' && nativeDpr !== 1 ? 1 : undefined;
+
   const Renderer = renderer === 'overlay' ? MapboxOverlayRenderer : DeckGLRenderer;
 
   return (
@@ -269,6 +291,7 @@ export function FillPatternHacks() {
           onViewStateChange={setViewState}
           layers={layers as Layer[]}
           mapStyle={CARTO_STYLES[basemap]}
+          pixelRatio={forcedPixelRatio}
         />
         <div
           style={{
@@ -282,7 +305,8 @@ export function FillPatternHacks() {
             background: 'rgba(0,0,0,0.5)'
           }}
         >
-          zoom {zoom.toFixed(2)} → {discreteZoom} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
+          dpr {forcedPixelRatio ? `${nativeDpr} → 1 (forced)` : nativeDpr} · zoom {zoom.toFixed(2)} → {discreteZoom} ·{' '}
+          {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
           {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
           {seamFix ? ' · seam-fix' : ''}
           {fp64 ? ' · fp64' : ''}
