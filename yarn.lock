@@ -216,9 +216,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@carto/api-client@npm:0.5.33-alpha.dbc9b74.140":
-  version: 0.5.33-alpha.dbc9b74.140
-  resolution: "@carto/api-client@npm:0.5.33-alpha.dbc9b74.140"
+"@carto/api-client@npm:0.5.33-alpha.6baf0ea.141":
+  version: 0.5.33-alpha.6baf0ea.141
+  resolution: "@carto/api-client@npm:0.5.33-alpha.6baf0ea.141"
   dependencies:
     "@loaders.gl/schema": "npm:^4.3.3"
     "@types/geojson": "npm:^7946.0.16"
@@ -227,7 +227,7 @@ __metadata:
     h3-js: "npm:^4.1.0"
     jsep: "npm:^1.4.0"
     quadbin: "npm:^0.4.1-alpha.0"
-  checksum: 10c0/5c6344227f8c2f362c8133f438dab3b413acfbb8c6fe22799cee1ab67ff7d6e098fd0b17892c1f020fc1fcc04e4dbfba462777174e2f87b145e0bf95833928a6
+  checksum: 10c0/b4c77e2ec533f7915f3179336de354a758432a8feb475bf2f57b146990a23ab9fc77cb0fb6a46794c3b19bd7b08f6ff8a32b41abe94a8df1e96289206bd7f7d1
   languageName: node
   linkType: hard
 
@@ -1722,7 +1722,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "deck.gl-playground@workspace:."
   dependencies:
-    "@carto/api-client": "npm:0.5.33-alpha.dbc9b74.140"
+    "@carto/api-client": "npm:0.5.33-alpha.6baf0ea.141"
     "@deck.gl/core": "npm:^9.3.0"
     "@deck.gl/extensions": "npm:^9.3.0"
     "@deck.gl/layers": "npm:^9.3.0"
