@@ -11,6 +11,7 @@
     "ts-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@carto/api-client": "0.5.33-alpha.dbc9b74.140",
     "@deck.gl/core": "^9.3.0",
     "@deck.gl/extensions": "^9.3.0",
     "@deck.gl/layers": "^9.3.0",

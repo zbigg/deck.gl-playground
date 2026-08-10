@@ -12,6 +12,7 @@ import {
   type PatternAssetSource,
   type PatternKey
 } from './pattern-atlas';
+import { _buildPatternAtlas } from '@carto/api-client';
 import {
   buildEncoding,
   PATTERN_COLUMN_LABELS,
@@ -164,6 +165,14 @@ function useNativeDevicePixelRatio(): number {
   return dpr;
 }
 
+// The builtin builder plus whatever the shipped @carto/api-client alpha produces, so the two
+// can be A/B'd against the same shader/scale path. The api-client build carries its own
+// scaleAdjustment + sampler params, consumed verbatim (exactly as parse-map does).
+type HarnessBuild = AtlasBuild & {
+  scaleAdjustment?: number;
+  textureParameters?: { lodMaxClamp: number; maxAnisotropy: number };
+};
+
 const PANEL_WIDTH = 360;
 
 const LINK_STYLE: CSSProperties = {
@@ -237,6 +246,14 @@ export function FillPatternHacks() {
       options: PATTERN_KEYS as unknown as string[],
       render: (get) => get('dataset') !== 'usa-states' || get('patternColumn') === 'fixed'
     },
+    // Which code assembles the sprite sheet: the playground's own builder (POC), or the
+    // _buildPatternAtlas shipped in the pinned @carto/api-client alpha — for verifying the
+    // production atlas against the proven builtin one.
+    atlasBuilder: {
+      value: init('atlasBuilder', 'builtin'),
+      options: { 'builtin (POC)': 'builtin', '@carto/api-client': 'api-client' },
+      label: 'atlas builder'
+    },
     sizing: { value: init('sizing', 'screen'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
     // Builder's fillPatternSize: a percent (100% = ×1, so ×0.001–×5) on the auto-computed scale.
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
@@ -245,14 +262,16 @@ export function FillPatternHacks() {
       min: 4,
       max: 200,
       step: 1,
-      render: (get) => get('sizing') === 'screen' && get('assetSource') !== 'png'
+      render: (get) =>
+        get('sizing') === 'screen' && (get('assetSource') !== 'png' || get('atlasBuilder') === 'api-client')
     },
     // png displays at its native 64px in follow-zoom (locked).
     screenPxPng: {
       value: 64,
       disabled: true,
       label: 'screenPx',
-      render: (get) => get('sizing') === 'screen' && get('assetSource') === 'png'
+      render: (get) =>
+        get('sizing') === 'screen' && get('assetSource') === 'png' && get('atlasBuilder') !== 'api-client'
     },
     // Hidden for the matrix dataset — there they become the two grid axes and vary per layer.
     lodMaxClamp: {
@@ -278,7 +297,7 @@ export function FillPatternHacks() {
       value: init('renderResolution', 128),
       options: { '64px (1×)': 64, '128px (2×)': 128, '256px (4×)': 256 },
       label: 'render res (texels)',
-      render: (get) => get('assetSource') !== 'png'
+      render: (get) => get('assetSource') !== 'png' || get('atlasBuilder') === 'api-client'
     },
     // png is a fixed 64px export — higher texel res would only upscale, so lock it.
     renderResolutionPng: {
@@ -286,11 +305,13 @@ export function FillPatternHacks() {
       options: { '64px (1×)': 64 },
       label: 'render res (texels)',
       disabled: true,
-      render: (get) => get('assetSource') === 'png'
+      render: (get) => get('assetSource') === 'png' && get('atlasBuilder') !== 'api-client'
     },
+    // api-client bundles its own (svg) assets — the source knob only shapes the builtin builder.
     assetSource: {
       value: init('assetSource', 'svg-figma'),
-      options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' }
+      options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' },
+      render: (get) => get('atlasBuilder') !== 'api-client'
     },
     seamFix: { value: init('seamFix', true), label: 'seam fix (#7326)' },
     fp64: { value: init('fp64', true), label: 'fp64 origin' },
@@ -306,6 +327,7 @@ export function FillPatternHacks() {
     dataset,
     patternColumn,
     pattern,
+    atlasBuilder,
     sizing,
     patternSize,
     screenPx = 64,
@@ -323,9 +345,11 @@ export function FillPatternHacks() {
   } = controls;
 
   // png is a fixed 64px export: force both its render resolution and follow-zoom size to 64
-  // (the editable knobs are hidden and shown disabled at 64 for png).
-  const effectiveResolution = assetSource === 'png' ? 64 : renderResolution;
-  const effectiveScreenPx = assetSource === 'png' ? 64 : screenPx;
+  // (the editable knobs are hidden and shown disabled at 64 for png). The api-client builder
+  // has no png path, so the lock only applies to the builtin builder.
+  const usingApiClient = atlasBuilder === 'api-client';
+  const effectiveResolution = !usingApiClient && assetSource === 'png' ? 64 : renderResolution;
+  const effectiveScreenPx = !usingApiClient && assetSource === 'png' ? 64 : screenPx;
 
   useEffect(() => {
     try {
@@ -335,11 +359,24 @@ export function FillPatternHacks() {
     }
   }, [controls, viewState]);
 
-  // Rebuild the atlas only when the atlas-shaping controls change.
-  const [build, setBuild] = useState<AtlasBuild | null>(null);
+  // Rebuild the atlas only when the atlas-shaping controls change. The api-client path maps
+  // the playground's texels-per-tile knob onto {size, resolution} (64 × N = renderResolution)
+  // and adopts the build's own scaleAdjustment + sampler params.
+  const [build, setBuild] = useState<HarnessBuild | null>(null);
   useEffect(() => {
-    setBuild(buildAtlas({ resolution: effectiveResolution, mipLevels, assetSource: assetSource as PatternAssetSource }));
-  }, [effectiveResolution, mipLevels, assetSource]);
+    if (usingApiClient) {
+      const { atlas, mapping, cell, scaleAdjustment, textureParameters } = _buildPatternAtlas({
+        size: SOURCE_TILE_SIZE,
+        resolution: effectiveResolution / SOURCE_TILE_SIZE,
+        mipLevels
+      });
+      setBuild({ atlas, mapping, cell, scaleAdjustment, textureParameters });
+    } else {
+      setBuild(
+        buildAtlas({ resolution: effectiveResolution, mipLevels, assetSource: assetSource as PatternAssetSource })
+      );
+    }
+  }, [usingApiClient, effectiveResolution, mipLevels, assetSource]);
 
   // Resolve the assembled atlas image for the preview (deck consumes the same promise separately).
   const [atlasImage, setAtlasImage] = useState<CanvasImageSource | null>(null);
@@ -410,7 +447,13 @@ export function FillPatternHacks() {
   // so bumping resolution only sharpens. World = fixed geographic; follow-zoom = ~screenPx CSS.
   const onScreenBase =
     sizing === 'world' ? 1 : effectiveScreenPx / (FILL_UV_SCALE * SOURCE_TILE_SIZE * Math.pow(2, discreteZoom));
-  const patternScale = (patternSize / 100) * onScreenBase * (SOURCE_TILE_SIZE / resolution);
+  // api-client builds carry their own factor (consumed exactly as parse-map does); if it
+  // disagrees with the builtin SOURCE_TILE_SIZE/resolution, that difference IS the finding.
+  const densityFactor = build?.scaleAdjustment ?? SOURCE_TILE_SIZE / resolution;
+  const patternScale = (patternSize / 100) * onScreenBase * densityFactor;
+  // Sampler params actually applied to the data layers (api-client builds bring their own).
+  const effLod = build?.textureParameters?.lodMaxClamp ?? lodMaxClamp;
+  const effAniso = build?.textureParameters?.maxAnisotropy ?? maxAnisotropy;
 
   const beforeId = renderer === 'overlay' ? CARTO_STYLE_FIRST_LABEL_LAYER[basemap] : undefined;
   const patternProps = build && {
@@ -427,7 +470,7 @@ export function FillPatternHacks() {
       ? [
           new GeoJsonLayer({
             // Shader-affecting controls go in the id so the layer (and its program) rebuilds.
-            id: `fill-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}-${maxAnisotropy}`,
+            id: `fill-${atlasBuilder}-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}-${lodMaxClamp}-${maxAnisotropy}`,
             data: useData ? statesData ?? USA_STATES : COUNTRIES,
             stroked: true,
             filled: true,
@@ -439,7 +482,8 @@ export function FillPatternHacks() {
             // Fill pattern (deck FillStyleExtension) — same descriptor shape api-client emits.
             ...patternProps,
             getFillPattern: encoding.getPattern,
-            textureParameters: { lodMaxClamp, maxAnisotropy },
+            // api-client builds ship sampler params sized to their own atlas; use them verbatim.
+            textureParameters: build?.textureParameters ?? { lodMaxClamp, maxAnisotropy },
             updateTriggers: { getFillPattern: encoding, getFillPatternScale: patternScale }
           })
         ]
@@ -460,7 +504,7 @@ export function FillPatternHacks() {
           ...MATRIX.map(
             (cell) =>
               new GeoJsonLayer({
-                id: `cell-${cell.lod}-${cell.aniso}-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}`,
+                id: `cell-${cell.lod}-${cell.aniso}-${atlasBuilder}-${effectiveResolution}-${mipLevels}-${assetSource}-${seamFix}-${fp64}`,
                 data: {
                   type: 'FeatureCollection',
                   features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [cell.ring] } }]
@@ -541,8 +585,9 @@ export function FillPatternHacks() {
         >
           dpr {forcedPixelRatio ? `${nativeDpr} → 1 (forced)` : nativeDpr} · zoom {zoom.toFixed(2)} → {discreteZoom} ·{' '}
           {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} ·{' '}
-          {lodMaxClamp === 0 ? 'mips off' : `mips≤${lodMaxClamp}`}
-          {maxAnisotropy > 1 ? ` · aniso ${maxAnisotropy}×` : ''}
+          {effLod === 0 ? 'mips off' : `mips≤${effLod}`}
+          {effAniso > 1 ? ` · aniso ${effAniso}×` : ''}
+          {usingApiClient ? ' · atlas: api-client' : ''}
           {seamFix ? ' · seam-fix' : ''}
           {fp64 ? ' · fp64' : ''}
         </div>
@@ -722,8 +767,8 @@ export function FillPatternHacks() {
                 color: '#475569'
               }}
             >
-              now: {assetSource} · res {resolution}px · mips {lodMaxClamp === 0 ? 'off' : `≤${lodMaxClamp}`} · aniso{' '}
-              {maxAnisotropy > 1 ? `${maxAnisotropy}×` : 'off'}
+              now: {usingApiClient ? '@carto/api-client atlas' : assetSource} · cell {resolution}px · mips{' '}
+              {effLod === 0 ? 'off' : `≤${effLod}`} · aniso {effAniso > 1 ? `${effAniso}×` : 'off'}
             </div>
           </div>
       )}
