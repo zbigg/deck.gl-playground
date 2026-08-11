@@ -11,3 +11,4 @@ dist
 !.yarn/versions
 .pnp.*
 *.tsbuildinfo
+.gh-pages
