@@ -42,16 +42,20 @@ export function phaseErrors(opts: {
   const worst = { stock: 0, fp64: 0, nofp64: 0 };
   // deck fround()s the origin's lng/lat before projecting it (getOffsetOrigin).
   for (const origin of [lngToCommon(f(longitude)), latToCommon(f(latitude))]) {
+    // `origin` is the full-precision common origin — the value getUniforms() hands out. deck
+    // splits it into these two only on the way to the uniform buffer.
     const hi = f(origin);
     const lo = fp64LowPart(origin);
     const truth = ((origin % cell) + cell) % cell;
 
     // 1. stock: mod(mod(hi, cell) + lo, cell), all in fp32
     const stock = glslMod(f(glslMod(hi, cell) + f(lo)), cell);
-    // 2. POC: origin reduced in JS, then re-split and re-summed in the shader
-    const reduced = (hi + lo) % cell;
+    // 2. POC: reduces `origin + low` — but `origin` is already the full value, so the low part
+    // is counted twice. `lo` is a sawtooth in `origin` (it resets at every fp32 grain), which
+    // puts a grain-sized step back into the phase, exactly what the reduction was for.
+    const reduced = (origin + lo) % cell;
     const poc = glslMod(f(f(reduced) + f(fp64LowPart(reduced))), cell);
-    // 3. CPU phase: reduced in JS, shader just reads it
+    // 3. CPU phase: reduce the full value once, and stop.
     const cpu = f(truth);
 
     worst.stock = Math.max(worst.stock, phaseErrorPx(stock, truth, cell, commonPerPixel));

@@ -78,12 +78,13 @@ function patchFill(module: FillShaderModule): FillShaderModule {
       const uniforms = base ? base(props, oldUniforms) : {};
       const cell: [number, number] | null = props?.patternCellCommon ?? null;
       const origin: number[] | undefined = uniforms?.uvCoordinateOrigin;
-      const low: number[] | undefined = uniforms?.uvCoordinateOrigin64Low;
-      if (cell && origin && low) {
-        uniforms.uvCoordinateOrigin = [
-          positiveMod(origin[0] + low[0], cell[0]),
-          positiveMod(origin[1] + low[1], cell[1])
-        ];
+      if (cell && origin) {
+        // `uvCoordinateOrigin` is still a full-precision JS double here — deck only rounds it
+        // to fp32 when it writes the uniform buffer, and `uvCoordinateOrigin64Low` is the
+        // residual the *shader* needs to rebuild it. Adding the low part back on this side
+        // double-counts it and re-introduces a term that steps at every fp32 grain of the
+        // origin, which is the artifact this whole thing exists to remove.
+        uniforms.uvCoordinateOrigin = [positiveMod(origin[0], cell[0]), positiveMod(origin[1], cell[1])];
         uniforms.uvCoordinateOrigin64Low = [0, 0];
       }
       return uniforms;
