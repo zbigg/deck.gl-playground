@@ -27,7 +27,7 @@ import { DeckGLRenderer, MapboxOverlayRenderer } from './renderers';
 // Natural Earth countries (the dataset deck's own FillStyleExtension example uses).
 const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
 // All 50 US states (served from /public). Carries per-state columns for data-driven patterns.
-const USA_STATES = '/usa_states_boundaries.geojson';
+const USA_STATES = `${import.meta.env.BASE_URL}usa_states_boundaries.geojson`;
 
 // Home view per dataset — framed on the data. usa-states frames the continental US (AK/HI
 // sit off-frame, as on a typical national map) with the side panel open.
