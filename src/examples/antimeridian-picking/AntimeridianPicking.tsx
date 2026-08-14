@@ -77,8 +77,10 @@ export function AntimeridianPicking() {
     const fromUrl = new URLSearchParams(window.location.search).get('mode') as Mode | null;
     return fromUrl && MODES.includes(fromUrl) ? fromUrl : 'overlay-interleaved';
   }, []);
-  const { mode } = useControls({
-    mode: { value: initialMode, options: MODE_LABELS }
+  const initialWrap = useMemo(() => new URLSearchParams(window.location.search).get('wrap') === '1', []);
+  const { mode, wrapLongitude } = useControls({
+    mode: { value: initialMode, options: MODE_LABELS },
+    wrapLongitude: { value: initialWrap, label: 'wrapLongitude (layer)' }
   });
 
   const [viewState, setViewState] = useState<MapViewState>(INITIAL_VIEW_STATE);
@@ -120,11 +122,12 @@ export function AntimeridianPicking() {
         getPosition: (d: (typeof POINTS)[number]) => d.position,
         getFillColor: (d: (typeof POINTS)[number]) => (d.position[0] > 0 ? [230, 120, 20] : [20, 110, 230]),
         radiusMinPixels: 12,
-        pickable: true
+        pickable: true,
+        wrapLongitude
       })
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode]
+    [mode, wrapLongitude]
   );
 
   // Test hooks: screen position of a point on the world copy nearest the viewport center,
