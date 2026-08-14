@@ -30,5 +30,15 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
+  },
+  "resolutions": {
+    "@deck.gl/core": "9.3.3",
+    "@deck.gl/extensions": "9.3.3",
+    "@deck.gl/layers": "9.3.3",
+    "@deck.gl/mapbox": "9.3.3",
+    "@deck.gl/react": "9.3.3",
+    "@deck.gl/widgets": "9.3.3",
+    "@deck.gl/geo-layers": "9.3.3",
+    "@deck.gl/aggregation-layers": "9.3.3"
   }
 }
