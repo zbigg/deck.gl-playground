@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { FillPatternHacks } from './examples/fill-pattern-hacks/FillPatternHacks';
 import { DenseBuildings } from './examples/dense-buildings/DenseBuildings';
+import { AntimeridianPicking } from './examples/antimeridian-picking/AntimeridianPicking';
 
 // Registry of examples. Add more here as the playground grows.
 const examples = {
   'fill-pattern-hacks': FillPatternHacks,
-  'dense-buildings': DenseBuildings
+  'dense-buildings': DenseBuildings,
+  'antimeridian-picking': AntimeridianPicking
 } as const;
 
 type ExampleKey = keyof typeof examples;
@@ -13,6 +15,9 @@ const EXAMPLE_KEY = 'deckgl-playground:example';
 
 export function App() {
   const [key, setKey] = useState<ExampleKey>(() => {
+    // ?example=<name> wins (shareable deep links), then the last locally-picked example.
+    const fromUrl = new URLSearchParams(window.location.search).get('example');
+    if (fromUrl && fromUrl in examples) return fromUrl as ExampleKey;
     const saved = localStorage.getItem(EXAMPLE_KEY);
     return saved && saved in examples ? (saved as ExampleKey) : 'fill-pattern-hacks';
   });
