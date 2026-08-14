@@ -51,14 +51,18 @@ declare global {
 function OverlayControl({
   interleaved,
   layers,
-  onClick
+  onClick,
+  viewState
 }: {
   interleaved: boolean;
   layers: Layer[];
   onClick: (info: PickingInfo) => void;
+  // Builder-style: push our own viewState into the overlay's deck instead of letting
+  // MapboxOverlay derive it from the map (the map-derived one includes repeat).
+  viewState?: MapViewState;
 }) {
   const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay({ interleaved, layers, onClick }));
-  overlay.setProps({ layers, onClick });
+  overlay.setProps({ layers, onClick, ...(viewState ? { viewState } : {}) });
   return null;
 }
 
@@ -78,9 +82,11 @@ export function AntimeridianPicking() {
     return fromUrl && MODES.includes(fromUrl) ? fromUrl : 'overlay-interleaved';
   }, []);
   const initialWrap = useMemo(() => new URLSearchParams(window.location.search).get('wrap') === '1', []);
-  const { mode, wrapLongitude } = useControls({
+  const initialVs = useMemo(() => new URLSearchParams(window.location.search).get('vs') === '1', []);
+  const { mode, wrapLongitude, passViewState } = useControls({
     mode: { value: initialMode, options: MODE_LABELS },
-    wrapLongitude: { value: initialWrap, label: 'wrapLongitude (layer)' }
+    wrapLongitude: { value: initialWrap, label: 'wrapLongitude (layer)' },
+    passViewState: { value: initialVs, label: 'pass viewState (Builder-style)' }
   });
 
   const [viewState, setViewState] = useState<MapViewState>(INITIAL_VIEW_STATE);
@@ -157,7 +163,7 @@ export function AntimeridianPicking() {
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
       {mode.startsWith('overlay') ? (
         <Map
-          key={mode}
+          key={`${mode}-${passViewState}`}
           longitude={viewState.longitude}
           latitude={viewState.latitude}
           zoom={viewState.zoom}
@@ -166,7 +172,12 @@ export function AntimeridianPicking() {
           onMove={(e) => setViewState(e.viewState as unknown as MapViewState)}
           mapStyle={MAP_STYLE}
         >
-          <OverlayControl interleaved={mode === 'overlay-interleaved'} layers={layers} onClick={handleClick} />
+          <OverlayControl
+            interleaved={mode === 'overlay-interleaved'}
+            layers={layers}
+            onClick={handleClick}
+            viewState={passViewState ? viewState : undefined}
+          />
         </Map>
       ) : (
         <DeckGL
