@@ -46,11 +46,11 @@ function patternScaleCommon(props: FillStyleExtensionProps): [number, number] | 
   return [FILL_UV_SCALE * scale * frame.width, FILL_UV_SCALE * scale * frame.height];
 }
 
-// Reduce one axis of the fp64 origin (hi + lo) mod scale in JS double precision, then
-// re-split. `x mod scale` is invariant under subtracting whole multiples of scale, so the
-// phase is identical while the value the fp32 shader sees is < scale.
-function reduceOriginAxis(hi: number, lo: number, scale: number): { hi: number; low: number } {
-  const reduced = (hi + lo) % scale;
+// `x mod scale` is invariant under subtracting whole multiples of scale, so the phase is
+// identical while the value the fp32 shader sees is < scale. `origin` is already the full
+// double — deck only splits it into hi/lo on the way to the uniform buffer.
+function reduceOriginAxis(origin: number, scale: number): { hi: number; low: number } {
+  const reduced = origin % scale;
   return { hi: reduced, low: fp64LowPart(reduced) };
 }
 
@@ -75,10 +75,9 @@ function patchFill(module: FillShaderModule, ext: CartoFillStyleExtension): Fill
         const uniforms = base ? base(props, oldUniforms) : {};
         const scale: [number, number] | undefined = props?.patternScaleCommon;
         const origin: number[] | undefined = uniforms?.uvCoordinateOrigin;
-        const low: number[] | undefined = uniforms?.uvCoordinateOrigin64Low;
-        if (scale && origin && low) {
-          const x = reduceOriginAxis(origin[0], low[0], scale[0]);
-          const y = reduceOriginAxis(origin[1], low[1], scale[1]);
+        if (scale && origin) {
+          const x = reduceOriginAxis(origin[0], scale[0]);
+          const y = reduceOriginAxis(origin[1], scale[1]);
           uniforms.uvCoordinateOrigin = [x.hi, y.hi];
           uniforms.uvCoordinateOrigin64Low = [x.low, y.low];
         }
