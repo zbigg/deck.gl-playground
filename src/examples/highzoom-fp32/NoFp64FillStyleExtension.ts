@@ -66,6 +66,7 @@ type FillShaderModule = {
   name?: string;
   inject?: Record<string, string>;
   getUniforms?: (props: any, oldUniforms?: any) => any;
+  instance?: unknown;
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -74,6 +75,10 @@ function patchFill(module: FillShaderModule): FillShaderModule {
   return {
     ...module,
     inject: { ...module.inject, 'fs:DECKGL_FILTER_COLOR': PATTERN_FS },
+    // Drop luma's cached instance so the clone re-normalizes with our inject; without this the
+    // spread carries the shared fill singleton's cached injections and initializeShaderModule
+    // early-returns, silently discarding PATTERN_FS.
+    instance: undefined,
     getUniforms: (props, oldUniforms) => {
       const uniforms = base ? base(props, oldUniforms) : {};
       const cell: [number, number] | null = props?.patternCellCommon ?? null;

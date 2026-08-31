@@ -59,13 +59,21 @@ type FillShaderModule = {
   name?: string;
   inject?: Record<string, string>;
   getUniforms?: (props: any, oldUniforms?: any) => any;
+  instance?: unknown;
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function patchFill(module: FillShaderModule, ext: CartoFillStyleExtension): FillShaderModule {
   let patched = module;
   if (ext.seamFix) {
-    patched = { ...patched, inject: { ...patched.inject, 'fs:DECKGL_FILTER_COLOR': PATTERN_SEAM_FIX_FS } };
+    // instance: undefined drops luma's cached normalized injections — the spread copies them, and
+    // initializeShaderModule early-returns when instance is set, silently reusing the ORIGINAL
+    // inject once a stock FillStyleExtension has initialized the shared fill singleton.
+    patched = {
+      ...patched,
+      inject: { ...patched.inject, 'fs:DECKGL_FILTER_COLOR': PATTERN_SEAM_FIX_FS },
+      instance: undefined
+    };
   }
   if (ext.fp64) {
     const base = patched.getUniforms;
