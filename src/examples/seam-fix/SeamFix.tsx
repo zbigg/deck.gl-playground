@@ -15,15 +15,14 @@ import {
   type PatternAssetSource
 } from '../fill-pattern-hacks/pattern-atlas';
 import { SeamFixFillStyleExtension } from './SeamFixFillStyleExtension';
-import { MultiLoupe, type LoupeCursor, type LoupePane } from '../dense-buildings/MultiLoupe';
-import buildingsData from '../dense-buildings/buildings.json';
-import type { FeatureCollection, Polygon } from 'geojson';
+import { MultiLoupe, type LoupeCursor, type LoupePane } from '../highzoom-fp32/MultiLoupe';
 
-const buildings = buildingsData as FeatureCollection<Polygon, { id: number }>;
+// Natural Earth countries — big polygons at low zoom, the opposite regime from dense-buildings.
+// Low zoom keeps the pattern origin small, so fp32 phase precision is a non-issue and the only
+// artifact left is the seam. GeoJsonLayer auto-loads the URL.
+const COUNTRIES = 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson';
 
-// Same Park Slope footprints as dense-buildings. Seams need the pattern minified enough that
-// the sampler reaches for a coarse mip, so this demo starts zoomed a touch further out.
-const INITIAL_VIEW_STATE: MapViewState = { longitude: -73.9843, latitude: 40.67174, zoom: 16.5 };
+const INITIAL_VIEW_STATE: MapViewState = { longitude: 10, latitude: 30, zoom: 2 };
 
 const CARTO_STYLES: Record<string, string> = {
   positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
@@ -67,7 +66,7 @@ function sanitizeViewState(vs: unknown): MapViewState | undefined {
   return { longitude, latitude, zoom, pitch, bearing } as MapViewState;
 }
 
-type Feature = { properties?: { id?: number } | null };
+type Feature = object;
 
 export function SeamFix() {
   const paneRefs = {
@@ -84,9 +83,11 @@ export function SeamFix() {
 
   const [controls] = useControls(() => ({
     pattern: { value: init('pattern', 'diag-right-small'), options: PATTERN_KEYS as unknown as string[] },
-    sizing: { value: init('sizing', 'world'), options: { 'World anchored': 'world', 'Follow zoom': 'screen' } },
-    patternSize: { value: init('patternSize', 20), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
-    screenPx: { value: init('screenPx', 24), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
+    // Follow-zoom by default: at world zoom a 64 m world-anchored repeat is sub-pixel, so the
+    // pattern has to be pinned to a screen size to repeat visibly across a country.
+    sizing: { value: init('sizing', 'screen'), options: { 'Follow zoom': 'screen', 'World anchored': 'world' } },
+    patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
+    screenPx: { value: init('screenPx', 40), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
     // Seams are a mipmap artifact — with mips off (0) both panes look identical. Default high
     // so the stock pane shows the dark tile-boundary lines the fix removes.
     lodMaxClamp: { value: init('lodMaxClamp', 4), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
@@ -95,7 +96,7 @@ export function SeamFix() {
       value: init('assetSource', 'png'),
       options: { png: 'png', 'svg (reverse-eng)': 'svg', 'svg (figma)': 'svg-figma', procedural: 'procedural' }
     },
-    colorBy: { value: init('colorBy', 'id'), options: { 'per building': 'id', 'single color': 'single' } },
+    colorBy: { value: init('colorBy', 'id'), options: { 'per country': 'id', 'single color': 'single' } },
     basemap: {
       value: init('basemap', 'none'),
       options: { none: 'none', Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
@@ -132,9 +133,9 @@ export function SeamFix() {
   const cellCommon = FILL_UV_SCALE * texels * patternScale;
   const cellScreenPx = cellCommon * Math.pow(2, zoom);
 
-  const getFillColor = (f: Feature): [number, number, number, number] => {
+  const getFillColor = (_f: Feature, info: { index: number }): [number, number, number, number] => {
     if (colorBy === 'single') return [25, 101, 176, 255];
-    const [r, g, b] = COLOR_PALETTE[(f.properties?.id ?? 0) % COLOR_PALETTE.length];
+    const [r, g, b] = COLOR_PALETTE[info.index % COLOR_PALETTE.length];
     return [r, g, b, 255];
   };
 
@@ -142,8 +143,8 @@ export function SeamFix() {
     build
       ? [
           new GeoJsonLayer({
-            id: `buildings-${resolution}-${assetSource}-${lodMaxClamp}`,
-            data: buildings,
+            id: `countries-${resolution}-${assetSource}-${lodMaxClamp}`,
+            data: COUNTRIES,
             stroked: false,
             filled: true,
             getFillColor,
@@ -185,7 +186,8 @@ export function SeamFix() {
               controller={true}
               layers={layersFor(extensions[variant.key as VariantKey])}
             >
-              {basemap !== 'none' && <Map mapStyle={CARTO_STYLES[basemap]} />}
+              {/* preserveDrawingBuffer so the loupe can read the basemap canvas when idle. */}
+              {basemap !== 'none' && <Map mapStyle={CARTO_STYLES[basemap]} preserveDrawingBuffer />}
             </DeckGL>
             <div
               style={{

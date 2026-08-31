@@ -51,7 +51,7 @@ const VARIANTS = [
   { key: 'nofp64', label: '3. CPU phase (no fp64)' }
 ] as const;
 
-const STORE_KEY = 'deckgl-playground:dense-buildings';
+const STORE_KEY = 'deckgl-playground:highzoom-fp32';
 type Persisted = { controls?: Record<string, unknown>; viewState?: MapViewState };
 
 function loadPersisted(): Persisted {
@@ -74,7 +74,7 @@ function sanitizeViewState(vs: unknown): MapViewState | undefined {
 
 type Feature = { properties?: { id?: number } | null };
 
-export function DenseBuildings() {
+export function HighZoomFp32() {
   const paneRefs = {
     stock: useRef<HTMLDivElement>(null),
     fp64: useRef<HTMLDivElement>(null),
@@ -204,7 +204,8 @@ export function DenseBuildings() {
               controller={true}
               layers={layersFor(extensions[variant.key])}
             >
-              {basemap !== 'none' && <Map mapStyle={CARTO_STYLES[basemap]} />}
+              {/* preserveDrawingBuffer so the loupe can read the basemap canvas when idle. */}
+              {basemap !== 'none' && <Map mapStyle={CARTO_STYLES[basemap]} preserveDrawingBuffer />}
             </DeckGL>
             <div
               style={{

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { FillPatternHacks } from './examples/fill-pattern-hacks/FillPatternHacks';
-import { DenseBuildings } from './examples/dense-buildings/DenseBuildings';
+import { HighZoomFp32 } from './examples/highzoom-fp32/HighZoomFp32';
 import { SeamFix } from './examples/seam-fix/SeamFix';
 import { AntimeridianPicking } from './examples/antimeridian-picking/AntimeridianPicking';
 
 // Registry of examples. Add more here as the playground grows.
 const examples = {
   'fill-pattern-hacks': FillPatternHacks,
-  'dense-buildings': DenseBuildings,
+  'highzoom-fp32': HighZoomFp32,
   'seam-fix': SeamFix,
   'antimeridian-picking': AntimeridianPicking
 } as const;
