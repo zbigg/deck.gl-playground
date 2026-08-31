@@ -35,10 +35,17 @@ const SEAM_FIX_FS = /* glsl */ `
     }
   `;
 
-type FillShaderModule = { name?: string; inject?: Record<string, string> };
+type FillShaderModule = { name?: string; inject?: Record<string, string>; instance?: unknown };
 
 function patchFill(module: FillShaderModule): FillShaderModule {
-  return { ...module, inject: { ...module.inject, 'fs:DECKGL_FILTER_COLOR': SEAM_FIX_FS } };
+  return {
+    ...module,
+    inject: { ...module.inject, 'fs:DECKGL_FILTER_COLOR': SEAM_FIX_FS },
+    // Drop luma's cached instance: spreading the module copies it, and initializeShaderModule
+    // early-returns when instance is set — reusing the ORIGINAL injections and silently dropping
+    // ours once a stock FillStyleExtension elsewhere has initialized the shared fill singleton.
+    instance: undefined
+  };
 }
 
 export class SeamFixFillStyleExtension extends FillStyleExtension {
