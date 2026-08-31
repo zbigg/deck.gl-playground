@@ -82,15 +82,23 @@ export function SeamFix() {
   const [viewState, setViewState] = useState<MapViewState>(persisted.viewState ?? INITIAL_VIEW_STATE);
 
   const [controls] = useControls(() => ({
-    pattern: { value: init('pattern', 'diag-right-small'), options: PATTERN_KEYS as unknown as string[] },
+    // Coarse repeat by default: the boundary seam is a line at every repeat edge, so a few big
+    // cells show it clearly, where a dense small pattern buries it under minification moiré.
+    pattern: { value: init('pattern', 'diag-right-medium'), options: PATTERN_KEYS as unknown as string[] },
     // Follow-zoom by default: at world zoom a 64 m world-anchored repeat is sub-pixel, so the
     // pattern has to be pinned to a screen size to repeat visibly across a country.
     sizing: { value: init('sizing', 'screen'), options: { 'Follow zoom': 'screen', 'World anchored': 'world' } },
     patternSize: { value: init('patternSize', 100), min: 0.1, max: 500, step: 0.1, label: 'pattern size %' },
-    screenPx: { value: init('screenPx', 40), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
+    // ~64px on-screen cell against a 128px atlas tile = ~2x minification: mips engage (so the
+    // stock seam appears) without tipping into the fine-moiré regime.
+    screenPx: { value: init('screenPx', 64), min: 4, max: 200, step: 1, render: (get) => get('sizing') === 'screen' },
     // Seams are a mipmap artifact — with mips off (0) both panes look identical. Default high
     // so the stock pane shows the dark tile-boundary lines the fix removes.
     lodMaxClamp: { value: init('lodMaxClamp', 4), min: 0, max: 8, step: 1, label: 'lodMaxClamp (mips)' },
+    // Anisotropy is the *moiré* knob, not the seam knob — raising it cleans the shimmer in BOTH
+    // panes equally. Kept here so the seam (fix-only) and moiré (aniso-only) artifacts can be told
+    // apart. Leave at 1 to see the boundary seam the fix targets.
+    maxAnisotropy: { value: init('maxAnisotropy', 1), min: 1, max: 16, step: 1, label: 'maxAnisotropy' },
     resolution: { value: init('resolution', 128), options: { '64px': 64, '128px': 128, '256px': 256 }, label: 'render resolution' },
     assetSource: {
       value: init('assetSource', 'png'),
@@ -102,7 +110,8 @@ export function SeamFix() {
       options: { none: 'none', Positron: 'positron', 'Dark Matter': 'dark-matter', Voyager: 'voyager' }
     }
   }));
-  const { pattern, sizing, patternSize, screenPx, lodMaxClamp, resolution, assetSource, colorBy, basemap } = controls;
+  const { pattern, sizing, patternSize, screenPx, lodMaxClamp, maxAnisotropy, resolution, assetSource, colorBy, basemap } =
+    controls;
 
   useEffect(() => {
     try {
@@ -143,7 +152,7 @@ export function SeamFix() {
     build
       ? [
           new GeoJsonLayer({
-            id: `countries-${resolution}-${assetSource}-${lodMaxClamp}`,
+            id: `countries-${resolution}-${assetSource}-${lodMaxClamp}-${maxAnisotropy}`,
             data: COUNTRIES,
             stroked: false,
             filled: true,
@@ -154,7 +163,7 @@ export function SeamFix() {
             fillPatternMask: true,
             getFillPattern: () => pattern,
             getFillPatternScale: patternScale,
-            textureParameters: { lodMaxClamp },
+            textureParameters: { lodMaxClamp, maxAnisotropy },
             extensions: [extension],
             updateTriggers: {
               getFillPattern: pattern,
@@ -216,9 +225,10 @@ export function SeamFix() {
           borderTop: '1px solid #334155'
         }}
       >
-        zoom {zoom.toFixed(2)} · {sizing === 'world' ? 'world-anchored' : 'follow-zoom'} · repeat{' '}
-        {cellScreenPx.toFixed(1)} px · {lodMaxClamp === 0 ? 'mips off — panes match' : `mips≤${lodMaxClamp}`} · drag
-        either pane — both share one camera
+        zoom {zoom.toFixed(2)} · repeat {cellScreenPx.toFixed(1)} px ·{' '}
+        {lodMaxClamp === 0 ? 'mips off — panes match' : `mips≤${lodMaxClamp}`}
+        {maxAnisotropy > 1 ? ` · aniso ${maxAnisotropy}×` : ''} · seam = the line at each repeat boundary (fixed on the
+        right); raise maxAnisotropy to kill moiré — that clears both panes, it's not what the fix does
       </div>
 
       <MultiLoupe panes={loupePanes} cursorRef={cursorRef} />
