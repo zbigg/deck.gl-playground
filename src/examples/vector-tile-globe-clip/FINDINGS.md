@@ -9,7 +9,7 @@ sc-579024 (Cotality).
 
 `?example=vector-tile-globe-clip` — two panes share one camera:
 
-- **1. stock** — `VectorTileLayer` as shipped (9.3.3).
+- **1. stock** — `VectorTileLayer` as shipped (confirmed on 9.4.0, the latest release).
 - **2. patched** — `PatchedVectorTileLayer`, which strips `ClipExtension` from the binary sub-layers
   on a globe viewport.
 
