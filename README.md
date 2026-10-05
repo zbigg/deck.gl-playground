@@ -8,6 +8,16 @@ npm install
 npm run dev
 ```
 
+## Example: vector-tile-globe-clip
+
+`@deck.gl/carto` `VectorTileLayer` leaves diagonal blank bands on a globe projection — it clips
+every binary tile against its WGS84 bbox with `ClipExtension`, which is meaningless in the globe's
+3D common space (CARTO ticket sc-579024). Two panes share one camera: **stock** vs **patched**
+(clip stripped on globe). Toggle `projection` (globe exposes the bug, mercator is clean), `dataset`,
+and `fill` — `translucent` reveals the tile-edge overdraw that `ClipExtension` exists to prevent, so
+the patched pane shows the real cost of simply removing the clip. Full write-up and the deck.gl PR
+history in [`src/examples/vector-tile-globe-clip/FINDINGS.md`](src/examples/vector-tile-globe-clip/FINDINGS.md).
+
 ## Example: fill-pattern-hacks
 
 Renders Natural Earth countries with a CARTO fill pattern (deck.gl `FillStyleExtension`) and a

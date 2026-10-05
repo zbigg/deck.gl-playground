@@ -3,13 +3,15 @@ import { FillPatternHacks } from './examples/fill-pattern-hacks/FillPatternHacks
 import { HighZoomFp32 } from './examples/highzoom-fp32/HighZoomFp32';
 import { SeamFix } from './examples/seam-fix/SeamFix';
 import { AntimeridianPicking } from './examples/antimeridian-picking/AntimeridianPicking';
+import { VectorTileGlobeClip } from './examples/vector-tile-globe-clip/VectorTileGlobeClip';
 
 // Registry of examples. Add more here as the playground grows.
 const examples = {
   'fill-pattern-hacks': FillPatternHacks,
   'highzoom-fp32': HighZoomFp32,
   'seam-fix': SeamFix,
-  'antimeridian-picking': AntimeridianPicking
+  'antimeridian-picking': AntimeridianPicking,
+  'vector-tile-globe-clip': VectorTileGlobeClip
 } as const;
 
 type ExampleKey = keyof typeof examples;
