@@ -6,6 +6,7 @@ import { VectorTileLayer } from '@deck.gl/carto';
 import { vectorTableSource } from '@carto/api-client';
 import { useControls } from 'leva';
 import { PatchedVectorTileLayer } from './PatchedVectorTileLayer';
+import { GlobeAwareVectorTileLayer } from './GlobeAwareVectorTileLayer';
 
 // Public demo token from CartoDB/deck.gl-examples — read-only access to carto-demo-data only.
 const ACCESS_TOKEN =
@@ -44,9 +45,16 @@ function sanitizeViewState(vs: unknown): ViewState | undefined {
 
 const VARIANTS = [
   { key: 'stock', label: '1. stock VectorTileLayer' },
-  { key: 'patched', label: '2. patched (no clip on globe)' }
+  { key: 'patched', label: '2. method 1 — no clip on globe' },
+  { key: 'globeclip', label: '3. method 2 — globe-aware clip' }
 ] as const;
 type VariantKey = (typeof VARIANTS)[number]['key'];
+
+const LAYER_CLASS = {
+  stock: VectorTileLayer,
+  patched: PatchedVectorTileLayer,
+  globeclip: GlobeAwareVectorTileLayer
+} as const;
 
 export function VectorTileGlobeClip() {
   const persisted = useMemo(loadPersisted, []);
@@ -98,7 +106,7 @@ export function VectorTileGlobeClip() {
 
   const fillAlpha = fill === 'opaque' ? 255 : 90;
   const layerFor = (variant: VariantKey): Layer => {
-    const LayerClass = variant === 'stock' ? VectorTileLayer : PatchedVectorTileLayer;
+    const LayerClass = LAYER_CLASS[variant];
     return new LayerClass({
       id: `${variant}-${dataset}-${fill}`,
       data: source,
@@ -155,10 +163,10 @@ export function VectorTileGlobeClip() {
       >
         {projection} · zoom {zoom.toFixed(2)} · {fill} · {DATASETS[dataset]} ·{' '}
         {projection === 'mercator'
-          ? 'mercator — both panes identical and complete; the bug is globe-only'
+          ? 'mercator — all three panes identical and complete; the bug is globe-only'
           : fill === 'translucent'
-            ? 'globe: left = blank bands (clip misfires); right = tiles fill, but watch tile-edge overdraw — the reason the clip exists'
-            : 'globe: left = blank bands (clip misfires); right = tiles fill cleanly (opaque hides edge overdraw)'}
+            ? 'globe: ①blank bands (clip misfires) · ②fills but tile-edge overdraw (clip dropped) · ③fills AND no overdraw (clip done in lng/lat)'
+            : 'globe: ①blank bands · ②fills (overdraw hidden by opaque) · ③fills, clip kept — switch to translucent to see ② vs ③'}
       </div>
     </div>
   );

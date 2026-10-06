@@ -7,11 +7,15 @@ sc-579024 (Cotality).
 
 ## Reproduce
 
-`?example=vector-tile-globe-clip` — two panes share one camera:
+`?example=vector-tile-globe-clip` — three panes share one camera:
 
 - **1. stock** — `VectorTileLayer` as shipped (confirmed on 9.4.0, the latest release).
-- **2. patched** — `PatchedVectorTileLayer`, which strips `ClipExtension` from the binary sub-layers
-  on a globe viewport.
+- **2. method 1** — `PatchedVectorTileLayer`, which strips `ClipExtension` from the binary sub-layers
+  on a globe viewport. Fills, but drops the overdraw protection (visible on translucent fills).
+- **3. method 2** — `GlobeAwareVectorTileLayer`, which *keeps* clipping on a globe but swaps the
+  flat-only `ClipExtension` for `GlobeClipExtension` (clips in lng/lat space). Fills **and** keeps
+  the overdraw protection. Draft of the cheap variant (lng/lat `worldPosition` — fp32, precision
+  degrades at high zoom, deck #9059); the precise variant inverse-maps `position.xyz` to lng/lat.
 
 Controls: `projection` (globe | mercator), `dataset` (US counties | US states), `fill`
 (translucent | opaque). Data is `carto-demo-data` via the public deck.gl-examples token (read-only).
