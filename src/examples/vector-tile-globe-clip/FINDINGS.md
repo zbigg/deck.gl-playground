@@ -67,5 +67,42 @@ History (visgl/deck.gl):
 2. **Globe-correct clip** — clip against the tile bbox in the globe's common space instead of
    assuming an axis-aligned rectangle. Larger change, but keeps the overdraw protection on globe.
 
-`PatchedVectorTileLayer` here implements option 1 to isolate the bug; it is not proposed as the
-final fix.
+`PatchedVectorTileLayer` here implements option 1 to isolate the bug; `GlobeAwareVectorTileLayer`
+implements option 2 (pane 3), switchable between the two sub-variants below.
+
+## Fragment-shader cost (method 2)
+
+The clip runs in `DECKGL_FILTER_COLOR` on `polygons-fill` / `polygons-stroke` / `linestrings`.
+Heavy = transcendental / sqrt / div (SFU ops, ~1/4–1/8 ALU throughput); comparisons are free.
+
+| variant | per-vertex heavy | per-fragment heavy | precision |
+|---|---|---|---|
+| stock | 0 | 0 (4 cmp) | broken on globe |
+| method 2 — **fp32** (`GlobeClipExtension`) | 0 | 0 (4 cmp) | fp32 lng/lat; degrades at high zoom (#9059) |
+| method 2 — **precise** (`GlobeClipExtensionPrecise`) | 0 | ~4 (`atan2`, `asin`, `sqrt`, `div`) | safe |
+| upstream **#10659** | ~3 (`log`, `atan`, `sqrt` in the vs flatten) | 0 (4 cmp) | safe + antimeridian |
+
+- **fp32 ≈ stock** — same box test on a different varying; no measurable cost.
+- **precise** adds ~4 SFU ops *per fragment*. Polygon fills cover large areas (many fragments), so
+  on big translucent fills on a weak GPU it's the costly case — order tens of cycles/fragment added
+  to an otherwise light fill shader. Negligible on desktop at map resolutions; measurable on mobile.
+- **#10659 does the heavy transform per-vertex** (flatten `geometry.position` → mercator-common in
+  the vs, interpolate, box-test in the fs). Vertices ≪ fragments, so per-fragment cost is ~free —
+  precise *and* cheap. Our precise variant could do the same (move the inverse to the vs); kept
+  per-fragment here only to make the method obvious.
+
+## Upstream fix (this is being solved in deck.gl)
+
+- **#10657** (`ba162619e`, merged to master) — flat common-space helpers
+  (`project_common_position_to_flat_wrapped`) in the project module. **Not in 9.4.0.**
+- **#10659** (open) — `fix(extensions): ClipExtension geometry mode in GlobeView`. Exactly option 2,
+  in `ClipExtension` itself: vs flattens the sphere position to mercator-common, `draw()` sets
+  bounds via `projectBoundsToFlatCommon`, antimeridian-wrapped. Depends on #10657.
+- **#10727** (open, draft) — `fix(geo-layers): clip MVTLayer sub layers under GlobeView`. The
+  MVTLayer analog (MVTLayer *skips* the clip on globe, so it must re-add it); requires #10659.
+
+**For sc-579024 (CARTO `VectorTileLayer`): #10659 alone fixes it, with no CARTO change.** Our layer
+already applies geometry-mode `ClipExtension` with the lng/lat tile bbox on globe — once #10659 makes
+that primitive globe-correct, the existing clip just works. #10727 is for MVTLayer, not us. The two
+panes here are a working preview of #10659 on 9.4.0 today (the precise variant is constant-free, so
+it needs none of #10657's helpers).

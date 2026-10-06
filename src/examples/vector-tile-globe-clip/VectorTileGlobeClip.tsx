@@ -79,11 +79,18 @@ export function VectorTileGlobeClip() {
     fill: {
       value: (fromUrl.get('fill') as string) || init('fill', 'translucent'),
       options: { translucent: 'translucent', opaque: 'opaque' }
+    },
+    // Pane 3 only: fp32 clips in raw lng/lat (worldPosition, precision degrades at high zoom);
+    // precise recovers lng/lat from the common-space sphere position (precision-safe).
+    'pane3 clip': {
+      value: (fromUrl.get('clip') as string) || init('pane3 clip', 'fp32'),
+      options: { fp32: 'fp32', precise: 'precise' }
     }
   }));
   const projection = controls.projection as 'globe' | 'mercator';
   const dataset = controls.dataset as DatasetKey;
   const fill = controls.fill as 'translucent' | 'opaque';
+  const clipPrecision = controls['pane3 clip'] as 'fp32' | 'precise';
 
   useEffect(() => {
     try {
@@ -108,16 +115,20 @@ export function VectorTileGlobeClip() {
   const layerFor = (variant: VariantKey): Layer => {
     const LayerClass = LAYER_CLASS[variant];
     return new LayerClass({
-      id: `${variant}-${dataset}-${fill}`,
+      id: `${variant}-${dataset}-${fill}${variant === 'globeclip' ? `-${clipPrecision}` : ''}`,
       data: source,
       stroked: true,
       filled: true,
       getFillColor: [25, 101, 176, fillAlpha],
       getLineColor: [255, 255, 255, 200],
       lineWidthMinPixels: 0.75,
-      pickable: false
+      pickable: false,
+      ...(variant === 'globeclip' ? { precise: clipPrecision === 'precise' } : {})
     });
   };
+
+  const labelFor = (variant: (typeof VARIANTS)[number]) =>
+    variant.key === 'globeclip' ? `${variant.label} · ${clipPrecision}` : variant.label;
 
   const view: View = projection === 'globe' ? new GlobeView({}) : new MapView({ repeat: true });
   const zoom = viewState.zoom ?? INITIAL_VIEW_STATE.zoom;
@@ -147,7 +158,7 @@ export function VectorTileGlobeClip() {
                 pointerEvents: 'none'
               }}
             >
-              {variant.label}
+              {labelFor(variant)}
             </div>
           </div>
         ))}
@@ -161,12 +172,12 @@ export function VectorTileGlobeClip() {
           borderTop: '1px solid #334155'
         }}
       >
-        {projection} · zoom {zoom.toFixed(2)} · {fill} · {DATASETS[dataset]} ·{' '}
+        {projection} · zoom {zoom.toFixed(2)} · {fill} · pane3 {clipPrecision} · {DATASETS[dataset]} ·{' '}
         {projection === 'mercator'
           ? 'mercator — all three panes identical and complete; the bug is globe-only'
           : fill === 'translucent'
-            ? 'globe: ①blank bands (clip misfires) · ②fills but tile-edge overdraw (clip dropped) · ③fills AND no overdraw (clip done in lng/lat)'
-            : 'globe: ①blank bands · ②fills (overdraw hidden by opaque) · ③fills, clip kept — switch to translucent to see ② vs ③'}
+            ? 'globe: ①blank bands (clip misfires) · ②fills but tile-edge overdraw (clip dropped) · ③fills AND no overdraw (clip in lng/lat); flip pane3 clip fp32→precise and zoom in to compare precision'
+            : 'globe: ①blank bands · ②fills (overdraw hidden by opaque) · ③fills, clip kept — translucent shows ② vs ③'}
       </div>
     </div>
   );
